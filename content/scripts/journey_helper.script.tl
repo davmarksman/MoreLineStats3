@@ -12,11 +12,19 @@
 --   frequency            vehicles per second.
 --   The call returns nil for a line with no vehicles.
 
-local LUA_UTILS : string = "bottle_more_line_stats::/scripts/luaUtils.script.tl"
+local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 
 local CT = api.type.ComponentType
-local PAX_ID : CargoTypeId = api.res.cargoTypeRep.getPassengerCargoTypeId()
+-- Read on first use: api.res is not available while the mod validator loads
+-- this file.
+local paxIdCache : CargoTypeId = nil
+local function paxId() : CargoTypeId
+	if paxIdCache == nil then
+		paxIdCache = api.res.cargoTypeRep.getPassengerCargoTypeId()
+	end
+	return paxIdCache
+end
 
 local function unknownLeg() : MlsLeg
 	return { time = 0, drive = 0, estimated = false, distance = 0 }
@@ -26,7 +34,7 @@ end
 -- vehicles per second; its inverse is the seconds between two vehicles.
 local function getLegs(lineId : Engine.Entity, stopCount : integer) : {MlsLeg}, number
 	local legs : {MlsLeg} = {}
-	local info = api.engine.system.transportVehicleSystem.getLineCargoInfo(lineId, PAX_ID)
+	local info = api.engine.system.transportVehicleSystem.getLineCargoInfo(lineId, paxId())
 	local frequency : number = 0
 	if info ~= nil and info.frequency ~= nil and info.frequency > 0 then
 		frequency = 1 / info.frequency

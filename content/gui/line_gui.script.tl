@@ -21,9 +21,9 @@ local line_react_util    = ug_require "::/gui/line_vehicle_mgmt/line_react_util.
 
 -- Own modules go through a path constant and a cast to their record in
 -- tealdef/mls_def.d.tl, because `tl check` can't resolve "<modId>::/" paths.
-local LINE_STATS_HELPER : string = "bottle_more_line_stats::/scripts/lineStatsHelper.script.tl"
-local STATIONS_HELPER : string = "bottle_more_line_stats::/scripts/stationsHelper.script.tl"
-local LUA_UTILS : string = "bottle_more_line_stats::/scripts/luaUtils.script.tl"
+local LINE_STATS_HELPER : string = "bottle_more_line_stats::/scripts/line_stats_helper.script.tl"
+local STATIONS_HELPER : string = "bottle_more_line_stats::/scripts/stations_helper.script.tl"
+local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
 local FORMATTING : string = "bottle_more_line_stats::/gui/formatting.script.tl"
 local lineStatsHelper = require(LINE_STATS_HELPER) as MlsLineStatsHelper
 local stationsHelper = require(STATIONS_HELPER) as MlsStationsHelper

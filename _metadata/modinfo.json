@@ -5,8 +5,8 @@
             "role": "CREATOR"
         }
     ],
-    "description": "More Line Stats 3. This is a port of my TF2 mod. This lightweight mod shows more statistics about your lines, straight from the line window. The motivation was to make it easier to run several passenger lines between the same stations: see where the demand is, where passengers are waiting too long, and which of your lines gets there fastest.",
-    "name": "More Line Stats 3",
+    "description": "More Line Stats for TF3. This is a port of my TF2 mod. This lightweight mod shows more statistics about your lines, straight from the line window. The motivation was to make it easier to run several passenger lines between the same stations: see where the demand is, where passengers are waiting too long, and which of your lines gets there fastest.",
+    "name": "More Line Stats",
     "summary": "More Line Statistics.",
     "tags": ["Script Mod"],
     "url": "https://github.com/davmarksman/MoreLineStats3"

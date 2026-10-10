@@ -1,5 +1,5 @@
 -- Styles for the Line Details window, loaded by the game from content/.
--- Classes are set with meta.class in lineGui.script.tl; only Components and
+-- Classes are set with meta.class in line_gui.script.tl; only Components and
 -- widgets take them. Margins and padding are { top, right, bottom, left }.
 -- Selectors under the window recipe also reach the nested competing panel.
 local ssu = require "::/gui/main/stylesheetutil.lua"

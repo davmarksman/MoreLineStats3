@@ -3,7 +3,7 @@
 -- return; no engine reads. Runs on the GUI thread (api.util formatters).
 -- Types live in tealdef/mls_def.d.tl (MlsFormatting).
 
-local LUA_UTILS : string = "bottle_more_line_stats::/scripts/luaUtils.script.tl"
+local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 
 local ESTIMATED_NOTE : string = "Estimated: no vehicle has completed this leg yet. The game uses this estimate until one does."

@@ -11,13 +11,21 @@
 --
 -- Types in tealdef/mls_def.d.tl (MlsLineStatsHelper, MlsLineStats).
 
-local JOURNEY_HELPER : string = "bottle_more_line_stats::/scripts/journeyHelper.script.tl"
-local LUA_UTILS : string = "bottle_more_line_stats::/scripts/luaUtils.script.tl"
+local JOURNEY_HELPER : string = "bottle_more_line_stats::/scripts/journey_helper.script.tl"
+local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
 local journeyHelper = require(JOURNEY_HELPER) as MlsJourneyHelper
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 
 local CT = api.type.ComponentType
-local PAX_ID : CargoTypeId = api.res.cargoTypeRep.getPassengerCargoTypeId()
+-- Read on first use: api.res is not available while the mod validator loads
+-- this file.
+local paxIdCache : CargoTypeId = nil
+local function paxId() : CargoTypeId
+	if paxIdCache == nil then
+		paxIdCache = api.res.cargoTypeRep.getPassengerCargoTypeId()
+	end
+	return paxIdCache
+end
 
 local function emptyStats(lineId : Engine.Entity, kind : string) : MlsLineStats
 	return {
@@ -109,19 +117,19 @@ end
 local function fillUnhappy(stats : MlsLineStats, lineId : Engine.Entity)
 	local cargo = api.engine.util.cargo
 	for i = 1, #stats.stops do
-		local q = cargo.getCargoQualityDataAtStop(lineId, i - 1, PAX_ID)
+		local q = cargo.getCargoQualityDataAtStop(lineId, i - 1, paxId())
 		local bad = q ~= nil and q.countBad or 0
 		stats.unhappyWaiting[i] = bad
 		stats.unhappyWaitingTotal = stats.unhappyWaitingTotal + bad
 	end
-	local line = cargo.getCargoQualityDataForLine(lineId, PAX_ID)
+	local line = cargo.getCargoQualityDataForLine(lineId, paxId())
 	stats.unhappyOnBoard = line ~= nil and line.countBad or 0
 end
 
 -- The line's passenger capacity usage ({used, capacity}), or nil.
 local function paxUsage(lineId : Engine.Entity) : UtilLine.LineCapacityUsage
 	local usages = api.engine.util.line.getLineCapacityUsages(lineId, true)
-	return usages ~= nil and usages[PAX_ID + 1] or nil
+	return usages ~= nil and usages[paxId() + 1] or nil
 end
 
 -- "empty" | "passenger" | "cargo". A line carrying passengers and cargo
@@ -135,7 +143,7 @@ local function lineKind(lineId : Engine.Entity, numVehicles : integer, pax : Uti
 	for _, v in ipairs(api.engine.system.transportVehicleSystem.getLineVehicles(lineId)) do
 		local tv = api.engine.getComponent(v, CT.TRANSPORT_VEHICLE) as Engine.Component.TransportVehicle
 		local caps = tv ~= nil and tv.config ~= nil and tv.config.capacities or nil
-		local cap = caps ~= nil and caps[PAX_ID + 1] or nil
+		local cap = caps ~= nil and caps[paxId() + 1] or nil
 		if cap ~= nil and cap > 0 then return "passenger" end
 	end
 	return "cargo"
@@ -194,7 +202,7 @@ local function collectUnsafe(lineId : Engine.Entity) : MlsLineStats
 
 		local atTerminal = api.engine.system.simEntityAtTerminalSystem
 		for i = 1, #stats.stops do
-			local n = atTerminal.getLineStopSimEntitiesCount(lineId, i - 1, PAX_ID) or 0
+			local n = atTerminal.getLineStopSimEntitiesCount(lineId, i - 1, paxId()) or 0
 			stats.waiting[i] = n
 			stats.waitingTotal = stats.waitingTotal + n
 		end

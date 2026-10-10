@@ -10,9 +10,9 @@
 --
 -- Types in tealdef/mls_def.d.tl (MlsStationsHelper, MlsCompeting).
 
-local JOURNEY_HELPER : string = "bottle_more_line_stats::/scripts/journeyHelper.script.tl"
-local LINE_STATS_HELPER : string = "bottle_more_line_stats::/scripts/lineStatsHelper.script.tl"
-local LUA_UTILS : string = "bottle_more_line_stats::/scripts/luaUtils.script.tl"
+local JOURNEY_HELPER : string = "bottle_more_line_stats::/scripts/journey_helper.script.tl"
+local LINE_STATS_HELPER : string = "bottle_more_line_stats::/scripts/line_stats_helper.script.tl"
+local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
 local journeyHelper = require(JOURNEY_HELPER) as MlsJourneyHelper
 local lineStatsHelper = require(LINE_STATS_HELPER) as MlsLineStatsHelper
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
