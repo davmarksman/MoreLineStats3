@@ -2,7 +2,7 @@
 -- Runs on the timer thread: api.engine / api.res reads only, plain tables
 -- out. Types in tealdef/mls_def.d.tl (MlsJourneyHelper).
 --
--- LineCargoInfo, verified in game:
+-- LineCargoInfo:
 --   sectionTimes[i]      leg i in seconds, including time at stations; the
 --                        measured average once a vehicle has run the leg,
 --                        otherwise the game's estimate. The last entry is

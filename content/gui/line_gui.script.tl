@@ -316,9 +316,10 @@ local function stopList(stats : MlsLineStats, selected : integer, onSelect : fun
 	}
 end
 
--- Summary above the stop list: a title row with the More/Less toggle, then
--- one row of the base game's icon-and-label cells (the Basics card look).
-local function summaryBlock(stats : MlsLineStats, toggle : TreeNodeId) : TreeNodeId
+-- Summary above the stop list: a title row with the Open Line Window button
+-- and the More/Less toggle, then one row of the base game's icon-and-label
+-- cells (the Basics card look).
+local function summaryBlock(stats : MlsLineStats, lineWindow : TreeNodeId, toggle : TreeNodeId) : TreeNodeId
 	local function iconCell(path : string, value : string, tooltip : string) : TreeNodeId
 		local p : any = { iconPath = path, label = value, tooltip = tooltip }
 		return gui_react_util.IconLabelIndicator(p as GuiReactUtil.IconLabelIndicatorParams)
@@ -331,6 +332,7 @@ local function summaryBlock(stats : MlsLineStats, toggle : TreeNodeId) : TreeNod
 				children = {
 					text("Summary", "font-scale-body", "Figures for the whole line, refreshed every 10 seconds."),
 					gui_react_util.makeHorizontalSpacer(),
+					lineWindow,
 					toggle,
 				},
 			},
@@ -584,8 +586,14 @@ local LineDetailsContent = react.RegisterRecipe(
 			function() showState:set(not shown) end,
 			shown and LESS_TOOLTIP or MORE_TOOLTIP)
 
+		-- The game's own line window, via the same UI event the timetable
+		-- mod fires; stack = true keeps this window open behind it.
+		local lineWindow = button_react_util.makeTextButton("primary", "Open Line Window",
+			function() react.fireEvent(nil, "selectEntity", { entity = lineId, stack = true }) end,
+			"Open the game's own window for this line.")
+
 		local left = styledColumn("mls-left", {
-			summaryBlock(stats, toggle),
+			summaryBlock(stats, lineWindow, toggle),
 			stopRow({
 				text("#", "font-scale-annotation"),
 				text("Stop", "font-scale-annotation"),
@@ -705,4 +713,6 @@ luaUtils.debug("lineGui loaded")
 
 return {
 	MlsLineEowCard = MlsLineEowCard,
+	-- For lines_gui.script.tl (the all-lines window).
+	openLineDetails = openLineDetails,
 }

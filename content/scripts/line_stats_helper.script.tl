@@ -6,7 +6,7 @@
 --   2. return plain Lua tables, never engine userdata
 --   3. no writes to module-level state
 --
--- Index rules (verified): Lua lists are 1-based; stop indexes the engine
+-- Index rules: Lua lists are 1-based; stop indexes the engine
 -- takes or returns are 0-based; cargo-indexed lists use cargo id + 1.
 --
 -- Types in tealdef/mls_def.d.tl (MlsLineStatsHelper, MlsLineStats).
@@ -55,7 +55,7 @@ local function emptyStats(lineId : Engine.Entity, kind : string) : MlsLineStats
 	}
 end
 
--- Leg demand (TF2's recordSimJourney): every passenger waiting for or riding
+-- Leg demand: every passenger waiting for or riding
 -- this line adds one to each leg from their boarding stop to their exit
 -- stop, walking forward with wrap-around. Cheap: a few milliseconds for
 -- every line of a 66-line save.
@@ -106,10 +106,10 @@ local function vehicleKind(v : Engine.Entity) : string
 end
 
 -- Vehicles per leg. A vehicle's stopIndex is the 0-based stop it is heading
--- to, or standing at [verified 2026-10-10]. A moving vehicle is on the leg
--- that ends there (leg i ends at stop i + 1); a vehicle at a station counts
--- on the leg that starts there, as the user reads the list. Vehicles in or
--- heading to a depot are left out.
+-- to, or standing at. A moving vehicle is on the leg that ends there (leg i
+-- ends at stop i + 1); a vehicle at a station counts on the leg that starts
+-- there, i.e. the row of the stop it stands at. Vehicles in or heading to a
+-- depot are left out.
 local function fillVehicles(stats : MlsLineStats, lineId : Engine.Entity)
 	local n = #stats.stops
 	for i = 1, n do
