@@ -43,6 +43,8 @@ local REFRESH_SECONDS : number = 10.0
 local STOP_COLUMN_WEIGHTS : {number} = { 2, 6, 2, 2, 2, 2, 3, 3, 2 }
 -- Competing lines: time, colour, line, difference.
 local COMPETING_COLUMN_WEIGHTS : {number} = { 2, 1, 5, 3 }
+-- Vehicles on the selected leg: pin, name, load, where.
+local VEHICLE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 3 }
 -- Summary: Demand, Load/capacity, Waiting, Unhappy, Length, Frequency, Journey.
 local SUMMARY_COLUMN_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2, 2 }
 
@@ -51,14 +53,30 @@ local ICON_DEMAND : string = "::/gui/entity_window/icons/passengers.tga"
 local ICON_PASSENGERS : string = "::/cargos/passengers/passengers.tga"
 local ICON_WAITING : string = "::/gui/entity_window/icons/building_stations.tga"
 local ICON_UNHAPPY : string = "::/gui/main/icons/symbol_emote_sad_colored.tga"
-local ICON_DISTANCE : string = "::/gui/construction/build_control/symbol_slope_0_20.tga"
+local ICON_DISTANCE : string = "::/gui/game_bar/icons/statistics_line_26.tga"
 local ICON_SPEED : string = "::/gui/entity_window/icons/symbol_speed.tga"
 local ICON_TIME : string = "::/gui/main/icons/calendar_speed.tga"
 local ICON_FREQUENCY : string = "::/gui/entity_window/icons/symbol_stop_watch.tga"
 local ICON_VEHICLES : string = "::/gui/entity_window/icons/relation_vehicle_train_bus.tga"
 local ICON_LOCATE : string = "::/gui/line_vehicle_mgmt/icons/symbol_locate_20.tga"
+-- Vehicle rows: standing at the station / on the way to the next one.
+local ICON_AT_STATION : string = "::/gui/entity_window/icons/building_stations.tga"
+local ICON_EN_ROUTE : string = "::/gui/construction/build_control/symbol_slope_0_20.tga"
+-- One icon per vehicle kind (MlsVehicle.kind), for a section with a single
+-- vehicle. Kinds not listed fall back to ICON_VEHICLES.
+local ICON_BY_KIND : {string : string} = {
+	train = "::/gui/hud/icons/vehicle_train.tga",
+	bus = "::/gui/hud/icons/vehicle_bus.tga",
+	tram = "::/gui/hud/icons/vehicle_tram.tga",
+	truck = "::/gui/hud/icons/vehicle_truck.tga",
+	ship = "::/gui/hud/icons/vehicle_ship.tga",
+	aircraft = "::/gui/hud/icons/vehicle_airplane.tga",
+	helicopter = "::/gui/hud/icons/vehicle_helicopter.tga",
+}
 
-local COMPETING_TOOLTIP : string = "Other passenger lines that go from this stop to the same stations, and how much faster or slower they are."
+local COMPETING_TITLE_TOOLTIP : string = "For each later station on this line: the other passenger lines that also go there from the selected stop, fastest first."
+local MORE_TOOLTIP : string = "Show, for the selected stop, the vehicles on the way to the next stop and the other lines that go to the same stations."
+local LESS_TOOLTIP : string = "Hide the vehicles and competing-lines panel to make the window smaller."
 
 ------------------------------------------------------------
 -- TYPES
@@ -80,7 +98,6 @@ local record CompetingParams
 	meta : Meta
 	lineId : Engine.Entity
 	stopIndex : integer
-	onHide : function()
 end
 
 ------------------------------------------------------------
@@ -137,15 +154,15 @@ local function icon(path : string, tooltip : string) : TreeNodeId
 	}
 end
 
--- Moves the camera to a station group. Runs in an onClick handler, on the
--- GUI thread, so api.gui is allowed.
-local function locate(stationGroup : Engine.Entity)
-	if stationGroup ~= nil and api.engine.entityExists(stationGroup) then
-		api.gui.camera.followEntity(stationGroup, true)
+-- Moves the camera to a station group or a vehicle. Runs in an onClick
+-- handler, on the GUI thread, so api.gui is allowed.
+local function locate(entity : Engine.Entity)
+	if entity ~= nil and api.engine.entityExists(entity) then
+		api.gui.camera.followEntity(entity, true)
 	end
 end
 
-local function locateButton(stationGroup : Engine.Entity, name : string) : TreeNodeId
+local function locateButton(entity : Engine.Entity, name : string) : TreeNodeId
 	return builtin.Button{
 		meta = { class = "mls-locate", tooltip = "Locate " .. name },
 		content = builtin.ImageView{
@@ -153,7 +170,7 @@ local function locateButton(stationGroup : Engine.Entity, name : string) : TreeN
 			path = ICON_LOCATE,
 			scaling = builtin.type.ImageViewScaling.AutoFit,
 		},
-		onClick = function() locate(stationGroup) end,
+		onClick = function() locate(entity) end,
 	}
 end
 
@@ -210,6 +227,30 @@ end
 -- STOP LIST (left)
 ------------------------------------------------------------
 
+-- The Vehicles cell, one icon: the station icon when every vehicle on the
+-- section stands at this stop; otherwise one vehicle's own kind, or the
+-- column's train-and-bus icon for several (including a mix of at-stop and
+-- en-route); a dash when the section is empty. The counts are in the tooltip.
+local function vehiclesCell(count : integer, atStation : integer, kind : string) : TreeNodeId
+	if count == 0 then
+		return text("-", "font-scale-body, mls-time", "No vehicles on section")
+	end
+	local tooltip : string
+	if atStation == count then
+		tooltip = tostring(count) .. (count == 1 and " vehicle" or " vehicles") .. " at stop"
+	else
+		tooltip = tostring(count) .. (count == 1 and " vehicle" or " vehicles") .. " on section"
+		if atStation > 0 then tooltip = tooltip .. " (" .. tostring(atStation) .. " at stop)" end
+	end
+	local path = ICON_VEHICLES
+	if atStation == count then
+		path = ICON_AT_STATION
+	elseif count == 1 then
+		path = ICON_BY_KIND[kind] or ICON_VEHICLES
+	end
+	return icon(path, tooltip)
+end
+
 local function stopList(stats : MlsLineStats, selected : integer, onSelect : function(integer)) : TreeNodeId
 	local rows : {TreeNodeId} = {}
 	local count = #stats.stops
@@ -237,9 +278,12 @@ local function stopList(stats : MlsLineStats, selected : integer, onSelect : fun
 			.. " on this line now (waiting + on board)."
 		if busiest then demandTip = demandTip .. "\nThe busiest leg of this line." end
 
-		local vehiclesTip = vehicles == 0
-			and ("No vehicle between " .. name .. " and " .. nextName .. " right now.")
-			or (tostring(vehicles) .. " on the way from " .. name .. " to " .. nextName .. ":\n" .. (stats.legVehicleNames[i] or ""))
+		local atStation = stats.legAtStation[i] or 0
+		-- The kind of the one vehicle on this section (only used when there is one).
+		local kind = "other"
+		for _, v in ipairs(stats.vehicles) do
+			if v.leg == i then kind = v.kind break end
+		end
 
 		local distanceTip = leg.distance > 0
 			and ("Distance from " .. name .. " to " .. nextName .. " as the crow flies: " .. distanceStr(leg.distance) .. ".")
@@ -254,7 +298,7 @@ local function stopList(stats : MlsLineStats, selected : integer, onSelect : fun
 				tostring(waiting) .. " passengers waiting at " .. name .. " for this line."),
 			text(tostring(unhappy), (unhappy > 0 and unhappy == maxUnhappy) and "font-scale-body, mls-time, mls-unhappy" or "font-scale-body, mls-time", unhappyTip),
 			text(tostring(demand), busiest and "font-scale-body, mls-time, mls-busiest" or "font-scale-body, mls-time", demandTip),
-			text(tostring(vehicles), "font-scale-body, mls-time", vehiclesTip),
+			vehiclesCell(vehicles, atStation, kind),
 			text(distanceStr(leg.distance), "font-scale-body, mls-time", distanceTip),
 			text(speedStr(leg), "font-scale-body, mls-time", speedTip),
 			text(legTimeStr(leg), "font-scale-body, mls-time", legTooltip(leg, i == count)),
@@ -322,6 +366,73 @@ local function summaryBlock(stats : MlsLineStats, toggle : TreeNodeId) : TreeNod
 end
 
 ------------------------------------------------------------
+-- VEHICLES ON THE SELECTED LEG (right, above the competing lines)
+------------------------------------------------------------
+
+-- A section title with an optional button at the right end (the Summary row
+-- on the left uses the same shape).
+local function sectionTitle(label : string, tooltip? : string, trailing? : TreeNodeId) : TreeNodeId
+	local children : {TreeNodeId} = { text(label, "font-scale-body", tooltip) }
+	if trailing ~= nil then
+		children[2] = gui_react_util.makeHorizontalSpacer()
+		children[3] = trailing
+	end
+	return builtin.Component{
+		meta = { class = "mls-section-title" },
+		layout = builtin.BoxLayout{
+			orientation = builtin.type.Orientation.Horizontal,
+			children = children,
+		},
+	}
+end
+
+-- "<pin> <name>  12/96  <station or arrow icon>". The pin follows the vehicle.
+local function vehicleRow(v : MlsVehicle) : TreeNodeId
+	local loadTip = tostring(v.load) .. " of " .. tostring(v.capacity) .. " seats taken on " .. v.name .. "."
+	local whereTip = v.atStation and "At Station" or "En route"
+	return tableRow(VEHICLE_COLUMN_WEIGHTS, {
+		locateButton(v.id, v.name),
+		text(v.name, "font-scale-body", "Locate " .. v.name .. " with the pin."),
+		text(tostring(v.load) .. "/" .. tostring(v.capacity), "font-scale-body, mls-time", loadTip),
+		icon(v.atStation and ICON_AT_STATION or ICON_EN_ROUTE, whereTip),
+	}, "mls-competing-row")
+end
+
+-- The vehicles between the selected stop and the next one. Reads the same
+-- 10 s data as the stop list, so no timer of its own. Not scrolled: a leg
+-- holds a handful of vehicles. Carries the Hide button for the whole column.
+local function vehiclesPanel(stats : MlsLineStats, selected : integer, onHide : function()) : TreeNodeId
+	local count = #stats.stops
+	local name = stats.stopNames[selected] or "?"
+	local nextName = stats.stopNames[(selected % count) + 1] or "?"
+	local rows : {TreeNodeId} = {}
+	for _, v in ipairs(stats.vehicles) do
+		if v.leg == selected then rows[#rows + 1] = vehicleRow(v) end
+	end
+	local hide = button_react_util.makeTextButton("primary", "Hide", onHide, LESS_TOOLTIP)
+	local children : {TreeNodeId} = {
+		sectionTitle("Vehicles on Section", nil, hide),
+	}
+	if #rows == 0 then
+		children[2] = text("No vehicle at " .. name .. " or on the way to " .. nextName .. " right now.", "font-scale-body")
+	else
+		children[2] = builtin.Component{
+			layout = builtin.BoxLayout{
+				orientation = builtin.type.Orientation.Vertical,
+				children = rows,
+			},
+		}
+	end
+	return builtin.Component{
+		meta = { class = "mls-vehicles" },
+		layout = builtin.BoxLayout{
+			orientation = builtin.type.Orientation.Vertical,
+			children = children,
+		},
+	}
+end
+
+------------------------------------------------------------
 -- COMPETING LINES (right)
 ------------------------------------------------------------
 
@@ -364,17 +475,18 @@ local CompetingPanel = react.RegisterRecipe(
 		end, REFRESH_SECONDS)
 		local data = state:old()
 
-		local children : {TreeNodeId} = {}
+		local children : {TreeNodeId} = {
+			sectionTitle("Competing Lines", COMPETING_TITLE_TOOLTIP),
+		}
+		-- No "From <station>" heading: the selected stop is highlighted in
+		-- the stop list already.
 		if data == nil then
-			children[1] = text("Loading...", "font-scale-body")
+			children[2] = text("Loading...", "font-scale-body")
 		else
-			local hide = button_react_util.makeTextButton("primary", "Hide", p.onHide,
-				"Hide the competing-lines panel to make the window smaller.")
-			children[1] = locateHeading(data.fromStationGroup, "From " .. data.fromName, "font-scale-body, mls-journey", COMPETING_TOOLTIP, hide)
 			if data.error ~= nil then
 				children[2] = text("Could not read the competing lines: " .. tostring(data.error), "font-scale-body")
 			elseif #data.destinations == 0 then
-				children[2] = text("No competing lines from here.", "font-scale-body",
+				children[2] = text("No competing lines from " .. data.fromName .. ".", "font-scale-body",
 					"No other passenger line of yours goes from this stop to any later stop on this line.")
 			else
 				local rows : {TreeNodeId} = {}
@@ -470,8 +582,7 @@ local LineDetailsContent = react.RegisterRecipe(
 			"primary",
 			shown and "<- Less" or "-> More",
 			function() showState:set(not shown) end,
-			shown and "Hide the competing-lines panel to make the window smaller."
-				or "Show, for the selected stop, the other lines that go to the same stations.")
+			shown and LESS_TOOLTIP or MORE_TOOLTIP)
 
 		local left = styledColumn("mls-left", {
 			summaryBlock(stats, toggle),
@@ -482,7 +593,7 @@ local LineDetailsContent = react.RegisterRecipe(
 				icon(ICON_UNHAPPY, "Unhappy: waiting passengers unhappy with the wait, by the game's own measure."),
 				icon(ICON_DEMAND, "Demand: passengers travelling between this stop and the next one on this line now "
 					.. "(waiting + on board). The busiest leg is highlighted."),
-				icon(ICON_VEHICLES, "Vehicles on the way from this stop to the next one, including any at the next station."),
+				icon(ICON_VEHICLES, "Vehicles standing at this stop or on the way from it to the next one."),
 				icon(ICON_DISTANCE, "Distance to the next stop as the crow flies."),
 				icon(ICON_SPEED, "Speed: average speed to the next stop, crow-flies distance over driving time where known."),
 				icon(ICON_TIME, "To next: average time from this stop to the next one, including time at stations."),
@@ -499,11 +610,11 @@ local LineDetailsContent = react.RegisterRecipe(
 		-- Keyed by stop index and station group, so the panel remounts if
 		-- the line's stops change under the selected index.
 		local right = styledColumn("mls-right", {
+			vehiclesPanel(stats, selected, function() showState:set(false) end),
 			CompetingPanel({
 				meta = { localKey = "stop" .. tostring(selected) .. "_" .. tostring(stats.stops[selected]) },
 				lineId = lineId,
 				stopIndex = selected,
-				onHide = function() showState:set(false) end,
 			} as CompetingParams),
 		})
 

@@ -24,8 +24,11 @@ function data()
 		size = { 680, -1 },
 		margin = { 0, 12, 0, 0 },
 	})
+	-- gravity { x, y }: 0, 0 pins the right column to the top of the row
+	-- instead of centring it against the taller left column.
 	a("R::MlsLineDetailsContent !mls-right", {
 		size = { 412, -1 },
+		gravity = { 0, 0 },
 	})
 
 	-- The ScrollArea gives its content no width, so the rows need one
@@ -37,6 +40,16 @@ function data()
 	-- The summary block and the "From ..." heading.
 	a("R::MlsLineDetailsContent !mls-journey", {
 		margin = { 0, 0, 8, 0 },
+	})
+
+	-- The vehicles block above the competing lines.
+	a("R::MlsLineDetailsContent !mls-vehicles", {
+		margin = { 0, 0, 16, 0 },
+	})
+
+	-- "Vehicles on Section" / "Competing Lines" title rows.
+	a("R::MlsLineDetailsContent !mls-section-title", {
+		margin = { 0, 0, 4, 0 },
 	})
 
 	-- "To <station>" headings inside the competing list.

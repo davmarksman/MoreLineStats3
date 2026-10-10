@@ -47,7 +47,10 @@ local function emptyStats(lineId : Engine.Entity, kind : string) : MlsLineStats
 		unhappyWaitingTotal = 0,
 		unhappyOnBoard = 0,
 		legVehicles = {},
+		legAtStation = {},
 		legVehicleNames = {},
+		vehicles = {},
+		carrier = "other",
 		hasCompetition = false,
 	}
 end
@@ -87,25 +90,59 @@ local function fillLegDemand(stats : MlsLineStats, lineId : Engine.Entity)
 
 end
 
+-- The game's own vehicle kind (the icon it draws), as a string for the GUI.
+local function vehicleKind(v : Engine.Entity) : string
+	local icons = api.type.enum.VehicleIconType
+	-- Declared as an integer, but it is the enum's value.
+	local t = api.engine.util.vehicle.getVehicleType(v) as VehicleIconType
+	if t == icons.Bus then return "bus" end
+	if t == icons.Truck then return "truck" end
+	if t == icons.TrainSteam or t == icons.TrainElectric or t == icons.TrainDiesel then return "train" end
+	if t == icons.Tram then return "tram" end
+	if t == icons.Aircraft then return "aircraft" end
+	if t == icons.Helicopter then return "helicopter" end
+	if t == icons.Ship then return "ship" end
+	return "other"
+end
+
 -- Vehicles per leg. A vehicle's stopIndex is the 0-based stop it is heading
--- to (or at), so it is on the leg that ends there: leg i ends at stop i + 1.
--- Vehicles in or heading to a depot are left out.
+-- to, or standing at [verified 2026-10-10]. A moving vehicle is on the leg
+-- that ends there (leg i ends at stop i + 1); a vehicle at a station counts
+-- on the leg that starts there, as the user reads the list. Vehicles in or
+-- heading to a depot are left out.
 local function fillVehicles(stats : MlsLineStats, lineId : Engine.Entity)
 	local n = #stats.stops
 	for i = 1, n do
 		stats.legVehicles[i] = 0
+		stats.legAtStation[i] = 0
 		stats.legVehicleNames[i] = ""
 	end
 	if n == 0 then return end
 	local states = api.type.enum.TransportVehicleState
+	local atVehicle = api.engine.system.simEntityAtVehicleSystem
 	for _, v in ipairs(api.engine.system.transportVehicleSystem.getLineVehicles(lineId)) do
 		local tv = api.engine.getComponent(v, CT.TRANSPORT_VEHICLE) as Engine.Component.TransportVehicle
 		if tv ~= nil and tv.state ~= states.IN_DEPOT and tv.state ~= states.GOING_TO_DEPOT then
 			local leg = (tv.stopIndex or 0)
 			if leg < 1 or leg > n then leg = n end
-			local name = api.engine.util.getEntityName(v) or "?"
-			if tv.state == states.AT_TERMINAL then name = name .. " (at station)" end
+			local atStation = tv.state == states.AT_TERMINAL
+			if atStation then leg = (leg % n) + 1 end
+			local caps = tv.config ~= nil and tv.config.capacities or nil
+			local vehicle : MlsVehicle = {
+				id = v,
+				name = api.engine.util.getEntityName(v) or "?",
+				leg = leg,
+				atStation = atStation,
+				load = atVehicle.getVehicleSimEntitiesCountForCargoType(v, paxId()) or 0,
+				capacity = caps ~= nil and (caps[paxId() + 1] or 0) or 0,
+				kind = vehicleKind(v),
+			}
+			stats.vehicles[#stats.vehicles + 1] = vehicle
+			if #stats.vehicles == 1 then stats.carrier = vehicle.kind end
+
+			local name = vehicle.name .. (atStation and " (at station)" or "")
 			stats.legVehicles[leg] = stats.legVehicles[leg] + 1
+			if atStation then stats.legAtStation[leg] = stats.legAtStation[leg] + 1 end
 			stats.legVehicleNames[leg] = stats.legVehicleNames[leg] == "" and name
 				or (stats.legVehicleNames[leg] .. "\n" .. name)
 		end
