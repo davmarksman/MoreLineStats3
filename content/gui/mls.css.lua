@@ -8,63 +8,68 @@ function data()
 	local result = {}
 	local a = ssu.makeAdder(result)
 
+	-- The Line Details and Cargo Details windows share their classes, but a
+	-- rule is keyed on the window recipe, so each rule is emitted once per
+	-- recipe name.
+	for _, r in ipairs({ "MlsLineDetailsContent", "MlsCargoDetailsContent" }) do
+
 	-- Window body: both columns, or only the left one with the competing
 	-- panel hidden. The Component carries the minimum width.
-	a("R::MlsLineDetailsContent !mls-details", {
+	a("R::" .. r .. " !mls-details", {
 		minSize = { 1120, -1 },
 		padding = { 8, 8, 8, 8 },
 	})
-	a("R::MlsLineDetailsContent !mls-details-narrow", {
+	a("R::" .. r .. " !mls-details-narrow", {
 		minSize = { 708, -1 },
 		padding = { 8, 8, 8, 8 },
 	})
 
 	-- Left column: summary + stop list. Right column: competing lines.
-	a("R::MlsLineDetailsContent !mls-left", {
+	a("R::" .. r .. " !mls-left", {
 		size = { 680, -1 },
 		margin = { 0, 12, 0, 0 },
 	})
 	-- gravity { x, y }: 0, 0 pins the right column to the top of the row
 	-- instead of centring it against the taller left column.
-	a("R::MlsLineDetailsContent !mls-right", {
+	a("R::" .. r .. " !mls-right", {
 		size = { 412, -1 },
 		gravity = { 0, 0 },
 	})
 
 	-- The ScrollArea gives its content no width, so the rows need one
 	-- (less than the column, leaving room for the scrollbar).
-	a("R::MlsLineDetailsContent !mls-scroll-content", {
+	a("R::" .. r .. " !mls-scroll-content", {
 		size = { 396, -1 },
 	})
 
 	-- The summary block and the "From ..." heading.
-	a("R::MlsLineDetailsContent !mls-journey", {
+	a("R::" .. r .. " !mls-journey", {
 		margin = { 0, 0, 8, 0 },
 	})
 
 	-- The vehicles block above the competing lines.
-	a("R::MlsLineDetailsContent !mls-vehicles", {
+	a("R::" .. r .. " !mls-vehicles", {
 		margin = { 0, 0, 16, 0 },
 	})
 
 	-- "Vehicles on Section" / "Competing Lines" title rows.
-	a("R::MlsLineDetailsContent !mls-section-title", {
+	a("R::" .. r .. " !mls-section-title", {
 		margin = { 0, 0, 4, 0 },
 	})
 
 	-- "To <station>" headings inside the competing list.
-	a("R::MlsLineDetailsContent !mls-destination", {
+	a("R::" .. r .. " !mls-destination", {
 		margin = { 6, 0, 2, 0 },
 	})
 
 	-- Numbers: right-aligned, with a gap on the left from the previous column.
-	a("R::MlsLineDetailsContent !mls-time", {
+	a("R::" .. r .. " !mls-time", {
 		gravity = { 1, 0.5 },
 		margin = { 0, 0, 0, 12 },
 	})
 
 	-- 20 px icons, right-aligned like the numbers.
-	a("R::MlsLineDetailsContent !mls-icon", {
+	a("R::" .. r .. " !mls-icon", {
 		size = { 20, 20 },
 		minSize = { 20, 20 },
 		maxSize = { 20, 20 },
@@ -74,40 +79,85 @@ function data()
 
 	-- The pin image inside a heading's locate button: no margin, no gravity
 	-- (mls-icon's left margin pushed it out of the 24 px button).
-	a("R::MlsLineDetailsContent !mls-pin-icon", {
+	a("R::" .. r .. " !mls-pin-icon", {
 		size = { 20, 20 },
 		minSize = { 20, 20 },
 		maxSize = { 20, 20 },
 	})
 
 	-- Locate pin buttons (headings) and the stop number + pin button.
-	a("R::MlsLineDetailsContent !mls-locate", {
+	a("R::" .. r .. " !mls-locate", {
 		size = { 24, 24 },
 		minSize = { 24, 24 },
 		maxSize = { 24, 24 },
 		padding = { 2, 2, 2, 2 },
 		margin = { 0, 4, 0, 0 },
 	})
-	a("R::MlsLineDetailsContent !mls-stop-locate", {
+	a("R::" .. r .. " !mls-stop-locate", {
 		padding = { 0, 4, 0, 2 },
 		margin = { 0, 0, 0, 0 },
 	})
 
-	a("R::MlsLineDetailsContent !mls-summary-icons", {
+	a("R::" .. r .. " !mls-summary-icons", {
 		margin = { 4, 0, 4, 0 },
 	})
 
 	-- Competing-line rows: the line-name widget is a button with its own
 	-- padding, which made the rows tall. Zero its padding and cap the row.
-	a("R::MlsLineDetailsContent !mls-line-name", {
+	a("R::" .. r .. " !mls-line-name", {
 		padding = { 0, 0, 0, 0 },
 		margin = { 0, 0, 0, 0 },
 	})
-	a("R::MlsLineDetailsContent !mls-competing-row", {
+	a("R::" .. r .. " !mls-competing-row", {
 		maxSize = { -1, 26 },
 	})
 
-	-- The HUD button (lines_gui.script.tl) and the all-lines window body.
+	-- Highlights: faster competitor (green), busiest leg (amber), most
+	-- unhappy stop (red).
+	a("R::" .. r .. " !mls-faster", {
+		color = { 0.55, 0.9, 0.55, 1.0 },
+	})
+	a("R::" .. r .. " !mls-busiest", {
+		color = { 1.0, 0.8, 0.45, 1.0 },
+	})
+	a("R::" .. r .. " !mls-unhappy", {
+		color = { 1.0, 0.65, 0.6, 1.0 },
+	})
+
+	end -- per-recipe rules
+
+	-- Cargo Details only: the Loads cell holds up to three small cargo icons
+	-- side by side (no right gravity, a small gap), and the per-type rows of
+	-- the Cargo on Line panel.
+	a("R::MlsCargoDetailsContent !mls-cargo-icon", {
+		size = { 20, 20 },
+		minSize = { 20, 20 },
+		maxSize = { 20, 20 },
+		margin = { 0, 2, 0, 2 },
+	})
+	a("R::MlsCargoDetailsContent !mls-cargo-loads", {
+		gravity = { 1, 0.5 },
+		margin = { 0, 0, 0, 8 },
+	})
+	a("R::MlsCargoDetailsContent !mls-cargo-types", {
+		margin = { 0, 0, 16, 0 },
+	})
+
+	-- The line-window card: a gap between the Passengers and Cargo buttons
+	-- (the class is on the first button only).
+	a("R::MlsCardContent Button!mls-card-btn", {
+		margin = { 0, 8, 0, 0 },
+	})
+
+	-- Line Details and Cargo Details open centred. No size: the window
+	-- takes the size of its content, as the game's own class-styled
+	-- `Window!missing-res-window` does with the same two properties.
+	a("Window!mls-details-window", {
+		anchorPoint = { 0.5, 0.5 },
+		gravity = { 0.5, 0.5 },
+	})
+
+	-- The HUD button (lines_list_gui.script.tl) and the all-lines window body.
 	a("R::MlsLinesButton ToggleButton!mls-toolbar-btn", {
 		padding = { 4, 8, 4, 8 },
 		margin = { 1, 1, 2, 1 },
@@ -160,10 +210,11 @@ function data()
 		padding = { 4, 6, 4, 6 },
 		margin = { 0, 4, 0, 0 },
 	})
+	-- The search box; the spacer before it in the filter row takes the rest.
 	a("R::MlsLinesWindowContent TextInputField!mls-search", {
-		size = { 260, 32 },
-		minSize = { 260, 32 },
-		maxSize = { 260, 32 },
+		size = { 400, 32 },
+		minSize = { 400, 32 },
+		maxSize = { 400, 32 },
 	})
 
 	-- The colour swatch is a real button (opens the game's line window):
@@ -247,18 +298,6 @@ function data()
 	})
 	a("R::MlsLinesWindowContent !mls-section-title", {
 		margin = { 0, 0, 4, 0 },
-	})
-
-	-- Highlights: faster competitor (green), busiest leg (amber), most
-	-- unhappy stop (red).
-	a("R::MlsLineDetailsContent !mls-faster", {
-		color = { 0.55, 0.9, 0.55, 1.0 },
-	})
-	a("R::MlsLineDetailsContent !mls-busiest", {
-		color = { 1.0, 0.8, 0.45, 1.0 },
-	})
-	a("R::MlsLineDetailsContent !mls-unhappy", {
-		color = { 1.0, 0.65, 0.6, 1.0 },
 	})
 
 	return result

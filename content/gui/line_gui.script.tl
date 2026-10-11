@@ -25,10 +25,21 @@ local LINE_STATS_HELPER : string = "bottle_more_line_stats::/scripts/line_stats_
 local STATIONS_HELPER : string = "bottle_more_line_stats::/scripts/stations_helper.script.tl"
 local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
 local FORMATTING : string = "bottle_more_line_stats::/gui/formatting.script.tl"
+local WIDGETS : string = "bottle_more_line_stats::/gui/widgets.script.tl"
 local lineStatsHelper = require(LINE_STATS_HELPER) as MlsLineStatsHelper
 local stationsHelper = require(STATIONS_HELPER) as MlsStationsHelper
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 local fmt = require(FORMATTING) as MlsFormatting
+local w = require(WIDGETS) as MlsWidgets
+-- The Cargo Details window, for the card's second button. cargo_gui never
+-- requires this module, so there is no cycle.
+local CARGO_GUI : string = "bottle_more_line_stats::/gui/cargo_gui.script.tl"
+local cargoGui = require(CARGO_GUI) as MlsCargoGui
+
+-- Widget helpers shared with the Cargo Details window (gui/widgets.script.tl).
+local text, tableRow, icon, iconCell = w.text, w.tableRow, w.icon, w.iconCell
+local locateButton, stopLocateButton, locateHeading = w.locateButton, w.stopLocateButton, w.locateHeading
+local styledColumn, sectionTitle, vehiclesCell = w.styledColumn, w.sectionTitle, w.vehiclesCell
 
 -- Text and tooltip builders (gui/formatting.script.tl).
 local legTimeStr, legTooltip, distanceStr, speedStr = fmt.legTimeStr, fmt.legTooltip, fmt.distanceStr, fmt.speedStr
@@ -57,22 +68,7 @@ local ICON_DISTANCE : string = "::/gui/game_bar/icons/statistics_line_26.tga"
 local ICON_SPEED : string = "::/gui/entity_window/icons/symbol_speed.tga"
 local ICON_TIME : string = "::/gui/main/icons/calendar_speed.tga"
 local ICON_FREQUENCY : string = "::/gui/entity_window/icons/symbol_stop_watch.tga"
-local ICON_VEHICLES : string = "::/gui/entity_window/icons/relation_vehicle_train_bus.tga"
-local ICON_LOCATE : string = "::/gui/line_vehicle_mgmt/icons/symbol_locate_20.tga"
--- Vehicle rows: standing at the station / on the way to the next one.
-local ICON_AT_STATION : string = "::/gui/entity_window/icons/building_stations.tga"
-local ICON_EN_ROUTE : string = "::/gui/construction/build_control/symbol_slope_0_20.tga"
--- One icon per vehicle kind (MlsVehicle.kind), for a section with a single
--- vehicle. Kinds not listed fall back to ICON_VEHICLES.
-local ICON_BY_KIND : {string : string} = {
-	train = "::/gui/hud/icons/vehicle_train.tga",
-	bus = "::/gui/hud/icons/vehicle_bus.tga",
-	tram = "::/gui/hud/icons/vehicle_tram.tga",
-	truck = "::/gui/hud/icons/vehicle_truck.tga",
-	ship = "::/gui/hud/icons/vehicle_ship.tga",
-	aircraft = "::/gui/hud/icons/vehicle_airplane.tga",
-	helicopter = "::/gui/hud/icons/vehicle_helicopter.tga",
-}
+local ICON_VEHICLES : string = w.ICON_VEHICLES
 
 local COMPETING_TITLE_TOOLTIP : string = "For each later station on this line: the other passenger lines that also go there from the selected stop, fastest first."
 local MORE_TOOLTIP : string = "Show, for the selected stop, the vehicles on the way to the next stop and the other lines that go to the same stations."
@@ -118,105 +114,17 @@ end
 local openLineDetails : function(lineId : Engine.Entity)
 
 ------------------------------------------------------------
--- WIDGET HELPERS
+-- WIDGET HELPERS (the shared ones live in gui/widgets.script.tl)
 ------------------------------------------------------------
--- UI tree rules, each learned from a crash:
---   * List children and TableLayout cells must be widgets or Components,
---     never bare layouts (wrap a layout in builtin.Component{ layout = ... }).
---   * A recipe must return a layout.
---   * Only Components and widgets take meta.class; a class on a layout is
---     ignored.
-
-local function text(str : string, class : string, tooltip? : string) : TreeNodeId
-	return builtin.TextView{ meta = { class = class, tooltip = tooltip }, text = str }
-end
-
-local function tableRow(weights : {number}, cells : {TreeNodeId}, class? : string) : TreeNodeId
-	return builtin.Component{
-		meta = { class = class },
-		layout = builtin.TableLayout{
-			columnWeights = weights,
-			rows = { builtin.Row{ cells = cells } },
-		},
-	}
-end
 
 local function stopRow(cells : {TreeNodeId}) : TreeNodeId
 	return tableRow(STOP_COLUMN_WEIGHTS, cells)
 end
 
--- A 20 px icon (mls-icon in mls.css.lua) with a tooltip.
-local function icon(path : string, tooltip : string) : TreeNodeId
-	return builtin.ImageView{
-		meta = { class = "mls-icon", tooltip = tooltip },
-		path = path,
-		scaling = builtin.type.ImageViewScaling.AutoFit,
-	}
-end
-
--- Moves the camera to a station group or a vehicle. Runs in an onClick
--- handler, on the GUI thread, so api.gui is allowed.
-local function locate(entity : Engine.Entity)
-	if entity ~= nil and api.engine.entityExists(entity) then
-		api.gui.camera.followEntity(entity, true)
-	end
-end
-
-local function locateButton(entity : Engine.Entity, name : string) : TreeNodeId
-	return builtin.Button{
-		meta = { class = "mls-locate", tooltip = "Locate " .. name },
-		content = builtin.ImageView{
-			meta = { class = "mls-pin-icon" },
-			path = ICON_LOCATE,
-			scaling = builtin.type.ImageViewScaling.AutoFit,
-		},
-		onClick = function() locate(entity) end,
-	}
-end
-
--- Stop number and locate pin as one button, so they share a column.
-local function stopLocateButton(index : integer, stationGroup : Engine.Entity, name : string) : TreeNodeId
-	return button_react_util.makeIconTextButton(
-		"mls-stop-locate",
-		ICON_LOCATE,
-		tostring(index),
-		function() locate(stationGroup) end,
-		"Locate " .. name)
-end
-
--- "<pin> To Alford Station", with an optional node pushed to the right end.
-local function locateHeading(stationGroup : Engine.Entity, label : string, class : string, tooltip : string, trailing? : TreeNodeId) : TreeNodeId
-	local children : {TreeNodeId} = {
-		locateButton(stationGroup, label),
-		text(label, class, tooltip),
-	}
-	if trailing ~= nil then
-		children[#children + 1] = gui_react_util.makeHorizontalSpacer()
-		children[#children + 1] = trailing
-	end
-	return builtin.Component{
-		layout = builtin.BoxLayout{
-			orientation = builtin.type.Orientation.Horizontal,
-			children = children,
-		},
-	}
-end
-
--- A vertical block that takes a style class (for widths and margins).
-local function styledColumn(class : string, children : {TreeNodeId}) : TreeNodeId
-	return builtin.Component{
-		meta = { class = class },
-		layout = builtin.BoxLayout{
-			orientation = builtin.type.Orientation.Vertical,
-			children = children,
-		},
-	}
-end
-
 -- Shown instead of stats for lines that have none; nil for a passenger line.
 local function messageFor(stats : MlsLineStats) : string
 	if stats == nil then return "Loading..." end
-	if stats.kind == "cargo" then return "Cargo line statistics are not available yet." end
+	if stats.kind == "cargo" then return "This line carries no passengers. Use the Cargo button in the line window." end
 	if stats.kind == "empty" then return "This line has no vehicles." end
 	if stats.kind == "missing" then return "This line no longer exists." end
 	if stats.kind == "error" then return "Could not read this line: " .. tostring(stats.error) end
@@ -226,30 +134,6 @@ end
 ------------------------------------------------------------
 -- STOP LIST (left)
 ------------------------------------------------------------
-
--- The Vehicles cell, one icon: the station icon when every vehicle on the
--- section stands at this stop; otherwise one vehicle's own kind, or the
--- column's train-and-bus icon for several (including a mix of at-stop and
--- en-route); a dash when the section is empty. The counts are in the tooltip.
-local function vehiclesCell(count : integer, atStation : integer, kind : string) : TreeNodeId
-	if count == 0 then
-		return text("-", "font-scale-body, mls-time", "No vehicles on section")
-	end
-	local tooltip : string
-	if atStation == count then
-		tooltip = tostring(count) .. (count == 1 and " vehicle" or " vehicles") .. " at stop"
-	else
-		tooltip = tostring(count) .. (count == 1 and " vehicle" or " vehicles") .. " on section"
-		if atStation > 0 then tooltip = tooltip .. " (" .. tostring(atStation) .. " at stop)" end
-	end
-	local path = ICON_VEHICLES
-	if atStation == count then
-		path = ICON_AT_STATION
-	elseif count == 1 then
-		path = ICON_BY_KIND[kind] or ICON_VEHICLES
-	end
-	return icon(path, tooltip)
-end
 
 local function stopList(stats : MlsLineStats, selected : integer, onSelect : function(integer)) : TreeNodeId
 	local rows : {TreeNodeId} = {}
@@ -280,10 +164,7 @@ local function stopList(stats : MlsLineStats, selected : integer, onSelect : fun
 
 		local atStation = stats.legAtStation[i] or 0
 		-- The kind of the one vehicle on this section (only used when there is one).
-		local kind = "other"
-		for _, v in ipairs(stats.vehicles) do
-			if v.leg == i then kind = v.kind break end
-		end
+		local kind = w.kindOnLeg(stats.vehicles, i)
 
 		local distanceTip = leg.distance > 0
 			and ("Distance from " .. name .. " to " .. nextName .. " as the crow flies: " .. distanceStr(leg.distance) .. ".")
@@ -320,10 +201,6 @@ end
 -- and the More/Less toggle, then one row of the base game's icon-and-label
 -- cells (the Basics card look).
 local function summaryBlock(stats : MlsLineStats, lineWindow : TreeNodeId, toggle : TreeNodeId) : TreeNodeId
-	local function iconCell(path : string, value : string, tooltip : string) : TreeNodeId
-		local p : any = { iconPath = path, label = value, tooltip = tooltip }
-		return gui_react_util.IconLabelIndicator(p as GuiReactUtil.IconLabelIndicatorParams)
-	end
 	local frequency = stats.frequency > 0 and luaUtils.getTimeStr(stats.frequency) or "?"
 	local rows : {TreeNodeId} = {
 		builtin.Component{
@@ -371,32 +248,14 @@ end
 -- VEHICLES ON THE SELECTED LEG (right, above the competing lines)
 ------------------------------------------------------------
 
--- A section title with an optional button at the right end (the Summary row
--- on the left uses the same shape).
-local function sectionTitle(label : string, tooltip? : string, trailing? : TreeNodeId) : TreeNodeId
-	local children : {TreeNodeId} = { text(label, "font-scale-body", tooltip) }
-	if trailing ~= nil then
-		children[2] = gui_react_util.makeHorizontalSpacer()
-		children[3] = trailing
-	end
-	return builtin.Component{
-		meta = { class = "mls-section-title" },
-		layout = builtin.BoxLayout{
-			orientation = builtin.type.Orientation.Horizontal,
-			children = children,
-		},
-	}
-end
-
 -- "<pin> <name>  12/96  <station or arrow icon>". The pin follows the vehicle.
 local function vehicleRow(v : MlsVehicle) : TreeNodeId
 	local loadTip = tostring(v.load) .. " of " .. tostring(v.capacity) .. " seats taken on " .. v.name .. "."
-	local whereTip = v.atStation and "At Station" or "En route"
 	return tableRow(VEHICLE_COLUMN_WEIGHTS, {
 		locateButton(v.id, v.name),
 		text(v.name, "font-scale-body", "Locate " .. v.name .. " with the pin."),
 		text(tostring(v.load) .. "/" .. tostring(v.capacity), "font-scale-body, mls-time", loadTip),
-		icon(v.atStation and ICON_AT_STATION or ICON_EN_ROUTE, whereTip),
+		w.whereIcon(v.atStation),
 	}, "mls-competing-row")
 end
 
@@ -525,18 +384,9 @@ local CompetingPanel = react.RegisterRecipe(
 -- LINE DETAILS WINDOW
 ------------------------------------------------------------
 
--- The window body. The styled Component carries the minimum width; without
--- it the window shrinks until the text is cut off.
+-- The window body (widgets.windowBody): the class carries the minimum width.
 local function detailsBody(children : {TreeNodeId}, class? : string) : TreeNodeId
-	return builtin.BoxLayout{
-		child = builtin.Component{
-			meta = { class = class or "mls-details" },
-			layout = builtin.BoxLayout{
-				orientation = builtin.type.Orientation.Horizontal,
-				children = children,
-			},
-		},
-	}
+	return w.windowBody(class or "mls-details", children)
 end
 
 local LineDetailsContent = react.RegisterRecipe(
@@ -633,7 +483,7 @@ local LineDetailsWindow = react.RegisterWrapperRecipe(
 	"MlsLineDetailsWindow",
 	builtin.Window,
 	function(p : WindowParams) : TreeNodeId
-		return builtin.Window{
+		local win : builtin.WindowParam = {
 			id = windowKey(p.lineId),
 			title = p.title,
 			onClose = p.onClose,
@@ -641,6 +491,11 @@ local LineDetailsWindow = react.RegisterWrapperRecipe(
 			autoFocusOnBecomingVisible = true,
 			content = LineDetailsContent(p),
 		}
+		-- Style class so the stylesheet can centre the window
+		-- (`Window!mls-details-window`); the game's entity window sets
+		-- meta.class the same way, WindowParam just doesn't declare it.
+		(win as {string : any}).meta = { class = "mls-details-window" }
+		return builtin.Window(win)
 	end)
 
 openLineDetails = function(lineId : Engine.Entity)
@@ -663,25 +518,39 @@ openLineDetails = function(lineId : Engine.Entity)
 			openWindows[lineId] = nil
 		end,
 	} as WindowParams)
+	-- Marked open at once, not only in onMount, so a second click before
+	-- the window has mounted brings it to the front instead of adding a
+	-- duplicate key.
+	openWindows[lineId] = true
 end
 
 ------------------------------------------------------------
 -- LINE WINDOW CARD
 ------------------------------------------------------------
 
--- Just the Show button, in the base game's blue "primary" style. No engine
--- reads and no timer, so the card costs nothing while line windows are open.
+-- Two blue "primary" buttons, always both: the card does no engine reads
+-- and has no timer, so it costs nothing while line windows are open. A line
+-- without passengers or without cargo gets a message in the window instead.
 local MlsCardContent = react.RegisterRecipe(
 	"MlsCardContent",
 	function(p : CardParams) : TreeNodeId
 		return builtin.BoxLayout{
 			orientation = builtin.type.Orientation.Horizontal,
 			children = {
+				-- A second class (comma-joined, as the game does) gives the
+				-- first button a right margin, so the two don't touch.
+				button_react_util.makeTextButton(
+					"primary,mls-card-btn",
+					"Passengers",
+					function() openLineDetails(p.lineId) end,
+					"Passengers on this line: waiting and unhappy per stop, demand per section, "
+					.. "times and speeds between stops, vehicles on each section and the competing lines."),
 				button_react_util.makeTextButton(
 					"primary",
-					"Show",
-					function() openLineDetails(p.lineId) end,
-					"Show the time between stops and the competing lines for this line"),
+					"Cargo",
+					function() cargoGui.openCargoDetails(p.lineId) end,
+					"Cargo on this line: what each stop loads, cargo on each section, "
+					.. "times and speeds between stops, vehicles on each section and the cargo types carried."),
 				gui_react_util.makeHorizontalSpacer(),
 			},
 		}
@@ -713,6 +582,6 @@ luaUtils.debug("lineGui loaded")
 
 return {
 	MlsLineEowCard = MlsLineEowCard,
-	-- For lines_gui.script.tl (the all-lines window).
+	-- For lines_list_gui.script.tl (the all-lines window).
 	openLineDetails = openLineDetails,
 }

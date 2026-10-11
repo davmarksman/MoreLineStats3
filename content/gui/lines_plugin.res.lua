@@ -6,7 +6,7 @@ function data()
 	return {
 		type = "react-plugin ::MainModButtonAreaExtension",
 		data = {
-			filePath = "bottle_more_line_stats::/gui/lines_gui.script@MlsLinesButton",
+			filePath = "bottle_more_line_stats::/gui/lines_list_gui.script@MlsLinesButton",
 			order = 10,
 		},
 	}

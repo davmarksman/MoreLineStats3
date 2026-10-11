@@ -109,17 +109,20 @@ end
 -- to, or standing at. A moving vehicle is on the leg that ends there (leg i
 -- ends at stop i + 1); a vehicle at a station counts on the leg that starts
 -- there, i.e. the row of the stop it stands at. Vehicles in or heading to a
--- depot are left out.
-local function fillVehicles(stats : MlsLineStats, lineId : Engine.Entity)
-	local n = #stats.stops
+-- depot are left out. `loadOf` decides what load and capacity a vehicle
+-- records (passengers here, cargo in cargo_stats_helper).
+local function readVehicles(lineId : Engine.Entity, n : integer,
+		loadOf : function(Engine.Entity, Engine.Component.TransportVehicle) : integer, integer) : MlsVehicleLegs
+	local r : MlsVehicleLegs = {
+		vehicles = {}, legVehicles = {}, legAtStation = {}, legVehicleNames = {}, carrier = "other",
+	}
 	for i = 1, n do
-		stats.legVehicles[i] = 0
-		stats.legAtStation[i] = 0
-		stats.legVehicleNames[i] = ""
+		r.legVehicles[i] = 0
+		r.legAtStation[i] = 0
+		r.legVehicleNames[i] = ""
 	end
-	if n == 0 then return end
+	if n == 0 then return r end
 	local states = api.type.enum.TransportVehicleState
-	local atVehicle = api.engine.system.simEntityAtVehicleSystem
 	for _, v in ipairs(api.engine.system.transportVehicleSystem.getLineVehicles(lineId)) do
 		local tv = api.engine.getComponent(v, CT.TRANSPORT_VEHICLE) as Engine.Component.TransportVehicle
 		if tv ~= nil and tv.state ~= states.IN_DEPOT and tv.state ~= states.GOING_TO_DEPOT then
@@ -127,26 +130,62 @@ local function fillVehicles(stats : MlsLineStats, lineId : Engine.Entity)
 			if leg < 1 or leg > n then leg = n end
 			local atStation = tv.state == states.AT_TERMINAL
 			if atStation then leg = (leg % n) + 1 end
-			local caps = tv.config ~= nil and tv.config.capacities or nil
+			local onBoard, capacity = loadOf(v, tv)
 			local vehicle : MlsVehicle = {
 				id = v,
 				name = api.engine.util.getEntityName(v) or "?",
 				leg = leg,
 				atStation = atStation,
-				load = atVehicle.getVehicleSimEntitiesCountForCargoType(v, paxId()) or 0,
-				capacity = caps ~= nil and (caps[paxId() + 1] or 0) or 0,
+				load = onBoard or 0,
+				capacity = capacity or 0,
 				kind = vehicleKind(v),
 			}
-			stats.vehicles[#stats.vehicles + 1] = vehicle
-			if #stats.vehicles == 1 then stats.carrier = vehicle.kind end
+			r.vehicles[#r.vehicles + 1] = vehicle
+			if #r.vehicles == 1 then r.carrier = vehicle.kind end
 
 			local name = vehicle.name .. (atStation and " (at station)" or "")
-			stats.legVehicles[leg] = stats.legVehicles[leg] + 1
-			if atStation then stats.legAtStation[leg] = stats.legAtStation[leg] + 1 end
-			stats.legVehicleNames[leg] = stats.legVehicleNames[leg] == "" and name
-				or (stats.legVehicleNames[leg] .. "\n" .. name)
+			r.legVehicles[leg] = r.legVehicles[leg] + 1
+			if atStation then r.legAtStation[leg] = r.legAtStation[leg] + 1 end
+			r.legVehicleNames[leg] = r.legVehicleNames[leg] == "" and name
+				or (r.legVehicleNames[leg] .. "\n" .. name)
 		end
 	end
+	return r
+end
+
+-- A vehicle's passengers on board and seats.
+local function paxLoadOf(v : Engine.Entity, tv : Engine.Component.TransportVehicle) : integer, integer
+	local caps = tv.config ~= nil and tv.config.capacities or nil
+	local onBoard = api.engine.system.simEntityAtVehicleSystem.getVehicleSimEntitiesCountForCargoType(v, paxId()) or 0
+	return onBoard, caps ~= nil and (caps[paxId() + 1] or 0) or 0
+end
+
+local function fillVehicles(stats : MlsLineStats, lineId : Engine.Entity)
+	local r = readVehicles(lineId, #stats.stops, paxLoadOf)
+	stats.vehicles = r.vehicles
+	stats.legVehicles = r.legVehicles
+	stats.legAtStation = r.legAtStation
+	stats.legVehicleNames = r.legVehicleNames
+	stats.carrier = r.carrier
+end
+
+-- Station group and name per stop, 1-based.
+local function readStops(lineId : Engine.Entity) : {Engine.Entity}, {string}
+	local stops : {Engine.Entity} = {}
+	local names : {string} = {}
+	local line = api.engine.getComponent(lineId, CT.LINE) as Engine.Component.Line
+	if line ~= nil and line.stops ~= nil then
+		for i, stop in ipairs(line.stops) do
+			local sg : Engine.Entity = stop.stationGroup
+			stops[i] = sg
+			names[i] = api.engine.entityExists(sg) and (api.engine.util.getEntityName(sg) or "?") or "?"
+		end
+	end
+	return stops, names
+end
+
+local function vehicleCount(lineId : Engine.Entity) : integer
+	return #api.engine.system.transportVehicleSystem.getLineVehicles(lineId)
 end
 
 -- The engine's own quality data: per stop it counts the passengers waiting
@@ -169,13 +208,32 @@ local function paxUsage(lineId : Engine.Entity) : UtilLine.LineCapacityUsage
 	return usages ~= nil and usages[paxId() + 1] or nil
 end
 
+-- Passengers waiting at each stop (0-based stop index for the engine) and
+-- their sum.
+local function readWaiting(lineId : Engine.Entity, numStops : integer) : {integer}, integer
+	local atTerminal = api.engine.system.simEntityAtTerminalSystem
+	local waiting : {integer} = {}
+	local total = 0
+	for i = 1, numStops do
+		local n = atTerminal.getLineStopSimEntitiesCount(lineId, i - 1, paxId()) or 0
+		waiting[i] = n
+		total = total + n
+	end
+	return waiting, total
+end
+
 -- "empty" | "passenger" | "cargo". A line carrying passengers and cargo
 -- counts as passenger. The line's capacity usage is checked first;
 -- a newly created line reports 0 there until its vehicles have loaded, so
--- the vehicles' configured capacities are the fallback.
-local function lineKind(lineId : Engine.Entity, numVehicles : integer, pax : UtilLine.LineCapacityUsage) : string
+-- the vehicles' configured capacities are the fallback. A line with
+-- passengers waiting at a stop is a passenger line too (2026-10-11): a
+-- vehicle's `capacities` are its compartments as currently assigned, so a
+-- mixed line whose space is all set to cargo at the moment reads 0 for
+-- passengers while people still queue for it.
+local function lineKind(lineId : Engine.Entity, numVehicles : integer, pax : UtilLine.LineCapacityUsage, waitingTotal : integer) : string
 	if numVehicles == 0 then return "empty" end
 	if pax ~= nil and pax.capacity > 0 then return "passenger" end
+	if waitingTotal ~= nil and waitingTotal > 0 then return "passenger" end
 
 	for _, v in ipairs(api.engine.system.transportVehicleSystem.getLineVehicles(lineId)) do
 		local tv = api.engine.getComponent(v, CT.TRANSPORT_VEHICLE) as Engine.Component.TransportVehicle
@@ -219,30 +277,16 @@ local function collectUnsafe(lineId : Engine.Entity) : MlsLineStats
 
 	local stats = emptyStats(lineId, "passenger")
 	stats.name = api.engine.util.getEntityName(lineId) or "?"
-
-	local line = api.engine.getComponent(lineId, CT.LINE) as Engine.Component.Line
-	if line ~= nil and line.stops ~= nil then
-		for i, stop in ipairs(line.stops) do
-			local sg : Engine.Entity = stop.stationGroup
-			stats.stops[i] = sg
-			stats.stopNames[i] = api.engine.entityExists(sg) and (api.engine.util.getEntityName(sg) or "?") or "?"
-		end
-	end
-
-	stats.numVehicles = #api.engine.system.transportVehicleSystem.getLineVehicles(lineId)
+	stats.stops, stats.stopNames = readStops(lineId)
+	stats.numVehicles = vehicleCount(lineId)
 	local pax = paxUsage(lineId)
-	stats.kind = lineKind(lineId, stats.numVehicles, pax)
+	-- Waiting is read before the classification: it is one of its inputs.
+	stats.waiting, stats.waitingTotal = readWaiting(lineId, #stats.stops)
+	stats.kind = lineKind(lineId, stats.numVehicles, pax, stats.waitingTotal)
 	if stats.kind == "passenger" then
 		stats.legs, stats.frequency = journeyHelper.getLegs(lineId, #stats.stops)
 		journeyHelper.fillDistances(stats.legs, stats.stops)
 		stats.journey = journeyHelper.sumLegs(stats.legs)
-
-		local atTerminal = api.engine.system.simEntityAtTerminalSystem
-		for i = 1, #stats.stops do
-			local n = atTerminal.getLineStopSimEntitiesCount(lineId, i - 1, paxId()) or 0
-			stats.waiting[i] = n
-			stats.waitingTotal = stats.waitingTotal + n
-		end
 
 		if pax ~= nil then
 			stats.onBoard = math.floor((pax.used or 0) + 0.5) as integer
@@ -268,12 +312,19 @@ local function collect(lineId : Engine.Entity) : MlsLineStats
 end
 
 -- For stationsHelper. Reads the engine: timer thread or handler only.
+-- Same rule as collect, including the waiting check, so a competing-line
+-- candidate is classed the way its own window would class it.
 local function lineKindOf(lineId : Engine.Entity) : string
-	return lineKind(lineId, #api.engine.system.transportVehicleSystem.getLineVehicles(lineId), paxUsage(lineId))
+	local numVehicles = #api.engine.system.transportVehicleSystem.getLineVehicles(lineId)
+	local _, waitingTotal = readWaiting(lineId, #readStops(lineId))
+	return lineKind(lineId, numVehicles, paxUsage(lineId), waitingTotal)
 end
 
 local M : MlsLineStatsHelper = {
 	collect = collect,
 	lineKind = lineKindOf,
+	readStops = readStops,
+	readVehicles = readVehicles,
+	vehicleCount = vehicleCount,
 }
 return M

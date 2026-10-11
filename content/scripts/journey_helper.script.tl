@@ -32,9 +32,12 @@ end
 
 -- Legs and frequency from one getLineCargoInfo call. The frequency is
 -- vehicles per second; its inverse is the seconds between two vehicles.
-local function getLegs(lineId : Engine.Entity, stopCount : integer) : {MlsLeg}, number
+-- The times are the same for every cargo type of a line, but the call
+-- returns nil for a type the line doesn't carry, so cargo lines pass one of
+-- their own ids.
+local function getLegs(lineId : Engine.Entity, stopCount : integer, cargoId? : CargoTypeId) : {MlsLeg}, number
 	local legs : {MlsLeg} = {}
-	local info = api.engine.system.transportVehicleSystem.getLineCargoInfo(lineId, paxId())
+	local info = api.engine.system.transportVehicleSystem.getLineCargoInfo(lineId, cargoId or paxId())
 	local frequency : number = 0
 	if info ~= nil and info.frequency ~= nil and info.frequency > 0 then
 		frequency = 1 / info.frequency

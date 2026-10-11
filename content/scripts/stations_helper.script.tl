@@ -195,6 +195,18 @@ local function getCompetingUnsafe(lineId : Engine.Entity, stopIndex : integer) :
 			end
 		end
 	end
+	-- Destinations in the order this line reaches them from S: shortest own
+	-- time first, unknown times last, stop order as the tie-break (the walk
+	-- above is in stop order, which differs from time order on out-and-back
+	-- lines, where a station on the way back can be nearer the other way).
+	local order : {Engine.Entity : integer} = {}
+	for i, dest in ipairs(result.destinations) do order[dest.stationGroup] = i end
+	table.sort(result.destinations, function(a : MlsDestination, b : MlsDestination) : boolean
+		local ta : number = a.thisLineTime > 0 and a.thisLineTime or math.huge
+		local tb : number = b.thisLineTime > 0 and b.thisLineTime or math.huge
+		if ta ~= tb then return ta < tb end
+		return order[a.stationGroup] < order[b.stationGroup]
+	end)
 	return result
 end
 

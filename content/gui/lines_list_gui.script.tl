@@ -297,9 +297,9 @@ local function filterRow(filter : FilterState, onKind : function(string), onSear
 	end
 	children[#children + 1] = gui_react_util.makeHorizontalSpacer()
 	children[#children + 1] = builtin.TextInputField{
-		meta = { class = "mls-search", tooltip = "Show only lines whose name contains this text. Separate several terms with commas, e.g. \"Line 1, Line 2\"." },
+		meta = { class = "mls-search", tooltip = "Show only lines whose name contains this text. Search several terms using commas, e.g. \"Line 1, Line 2\"." },
 		value = filter.search,
-		placeholderText = "Search lines",
+		placeholderText = "Search lines. Search several terms using commas, e.g. \"Line 1, Line 2\".",
 		onTyping = onSearch,
 		onValueChange = onSearch,
 		acceptOnFocusLoss = true,
