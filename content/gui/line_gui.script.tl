@@ -1,10 +1,11 @@
 -- More Line Stats: the line-window card and the Line Details windows.
 --
--- The card (registered by line_eow.res.lua) has a Show button that opens a
--- Line Details window for its line; each line gets its own window, keyed by
--- line id, so several can be open side by side. Line Details is master-detail:
--- the summary and stop list on the left, the competing lines for the selected
--- stop on the right.
+-- The card (registered by line_eow.res.lua) has two buttons: Passengers
+-- opens a Line Details window for its line, Cargo opens a Cargo Details
+-- window (cargo_gui). Each line gets its own window, keyed by line id, so
+-- several can be open side by side. Line Details is master-detail: the
+-- summary and stop list on the left; on the right, for the selected stop,
+-- the vehicles on the way to the next stop and the competing lines.
 --
 -- No engine reads happen in recipe bodies: all data comes from
 -- useStepStateTimer. Event handlers may read the engine.
@@ -30,16 +31,16 @@ local lineStatsHelper = require(LINE_STATS_HELPER) as MlsLineStatsHelper
 local stationsHelper = require(STATIONS_HELPER) as MlsStationsHelper
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 local fmt = require(FORMATTING) as MlsFormatting
-local w = require(WIDGETS) as MlsWidgets
+local widgets = require(WIDGETS) as MlsWidgets
 -- The Cargo Details window, for the card's second button. cargo_gui never
 -- requires this module, so there is no cycle.
 local CARGO_GUI : string = "bottle_more_line_stats::/gui/cargo_gui.script.tl"
 local cargoGui = require(CARGO_GUI) as MlsCargoGui
 
 -- Widget helpers shared with the Cargo Details window (gui/widgets.script.tl).
-local text, tableRow, icon, iconCell = w.text, w.tableRow, w.icon, w.iconCell
-local locateButton, stopLocateButton, locateHeading = w.locateButton, w.stopLocateButton, w.locateHeading
-local styledColumn, sectionTitle, vehiclesCell = w.styledColumn, w.sectionTitle, w.vehiclesCell
+local text, tableRow, icon, iconCell = widgets.text, widgets.tableRow, widgets.icon, widgets.iconCell
+local locateButton, stopLocateButton, locateHeading = widgets.locateButton, widgets.stopLocateButton, widgets.locateHeading
+local styledColumn, sectionTitle, vehiclesCell = widgets.styledColumn, widgets.sectionTitle, widgets.vehiclesCell
 
 -- Text and tooltip builders (gui/formatting.script.tl).
 local legTimeStr, legTooltip, distanceStr, speedStr = fmt.legTimeStr, fmt.legTooltip, fmt.distanceStr, fmt.speedStr
@@ -68,7 +69,7 @@ local ICON_DISTANCE : string = "::/gui/game_bar/icons/statistics_line_26.tga"
 local ICON_SPEED : string = "::/gui/entity_window/icons/symbol_speed.tga"
 local ICON_TIME : string = "::/gui/main/icons/calendar_speed.tga"
 local ICON_FREQUENCY : string = "::/gui/entity_window/icons/symbol_stop_watch.tga"
-local ICON_VEHICLES : string = w.ICON_VEHICLES
+local ICON_VEHICLES : string = widgets.ICON_VEHICLES
 
 local COMPETING_TITLE_TOOLTIP : string = "For each later station on this line: the other passenger lines that also go there from the selected stop, fastest first."
 local MORE_TOOLTIP : string = "Show, for the selected stop, the vehicles on the way to the next stop and the other lines that go to the same stations."
@@ -82,6 +83,7 @@ local record WindowParams
 	lineId : Engine.Entity
 	title : string
 	onClose : function()
+	initialStop : integer  -- 1-based stop selected on open; nil = stop 1
 end
 
 local record CardParams
@@ -100,7 +102,8 @@ end
 -- WINDOW STATE (GUI thread only)
 ------------------------------------------------------------
 
--- Lines with an open Line Details window, so Show can bring it to the front.
+-- Lines with an open Line Details window, so a second Passengers click
+-- brings it to the front instead of opening a duplicate.
 local openWindows : {Engine.Entity : boolean} = {}
 
 -- Window keys share one container with the base game. A pinned line window
@@ -111,7 +114,7 @@ end
 
 -- Forward declaration: defined after the window recipes it needs, used by
 -- the competing panel above them.
-local openLineDetails : function(lineId : Engine.Entity)
+local openLineDetails : function(lineId : Engine.Entity, stopIndex? : integer)
 
 ------------------------------------------------------------
 -- WIDGET HELPERS (the shared ones live in gui/widgets.script.tl)
@@ -152,31 +155,27 @@ local function stopList(stats : MlsLineStats, selected : integer, onSelect : fun
 		local unhappy = stats.unhappyWaiting[i] or 0
 		local demand = stats.legDemand[i] or 0
 		local vehicles = stats.legVehicles[i] or 0
-		local nextName = stats.stopNames[(i % count) + 1] or "?"
 
-		local unhappyTip = tostring(unhappy) .. " of the " .. tostring(waiting) .. " passengers waiting at " .. name
-			.. " are unhappy with the wait (the game's own measure, as in the station window)."
+		local unhappyTip = "Waiting passengers unhappy with the wait (the game's own measure)."
 
 		local busiest = demand > 0 and demand == maxDemand
-		local demandTip = tostring(demand) .. " passengers travel between " .. name .. " and " .. nextName
-			.. " on this line now (waiting + on board)."
+		local demandTip = "Passengers travelling from this stop to the next one now (waiting + on board)."
 		if busiest then demandTip = demandTip .. "\nThe busiest leg of this line." end
 
 		local atStation = stats.legAtStation[i] or 0
 		-- The kind of the one vehicle on this section (only used when there is one).
-		local kind = w.kindOnLeg(stats.vehicles, i)
+		local kind = widgets.kindOnLeg(stats.vehicles, i)
 
 		local distanceTip = leg.distance > 0
-			and ("Distance from " .. name .. " to " .. nextName .. " as the crow flies: " .. distanceStr(leg.distance) .. ".")
+			and "Distance to the next stop as the crow flies."
 			or "No position known for one of the two stations."
-		local speedTip = "Average speed from " .. name .. " to " .. nextName .. ": the crow-flies distance over "
+		local speedTip = "Crow-flies distance over "
 			.. (leg.drive > 0 and "the driving time (time at stations left out)." or "the whole leg time (no driving time known).")
 
 		rows[i] = stopRow({
-			stopLocateButton(i, stats.stops[i], name),
+			stopLocateButton(i, stats.stops[i]),
 			text(name, "font-scale-body"),
-			text(tostring(waiting), "font-scale-body, mls-time",
-				tostring(waiting) .. " passengers waiting at " .. name .. " for this line."),
+			text(tostring(waiting), "font-scale-body, mls-time", "Passengers waiting at this stop for this line."),
 			text(tostring(unhappy), (unhappy > 0 and unhappy == maxUnhappy) and "font-scale-body, mls-time, mls-unhappy" or "font-scale-body, mls-time", unhappyTip),
 			text(tostring(demand), busiest and "font-scale-body, mls-time, mls-busiest" or "font-scale-body, mls-time", demandTip),
 			vehiclesCell(vehicles, atStation, kind),
@@ -249,14 +248,13 @@ end
 ------------------------------------------------------------
 
 -- "<pin> <name>  12/96  <station or arrow icon>". The pin follows the vehicle.
-local function vehicleRow(v : MlsVehicle) : TreeNodeId
-	local loadTip = tostring(v.load) .. " of " .. tostring(v.capacity) .. " seats taken on " .. v.name .. "."
+local function vehicleRow(vehicle : MlsVehicle) : TreeNodeId
 	return tableRow(VEHICLE_COLUMN_WEIGHTS, {
-		locateButton(v.id, v.name),
-		text(v.name, "font-scale-body", "Locate " .. v.name .. " with the pin."),
-		text(tostring(v.load) .. "/" .. tostring(v.capacity), "font-scale-body, mls-time", loadTip),
-		w.whereIcon(v.atStation),
-	}, "mls-competing-row")
+		locateButton(vehicle.id),
+		text(vehicle.name, "font-scale-body"),
+		text(tostring(vehicle.load) .. "/" .. tostring(vehicle.capacity), "font-scale-body, mls-time", "Passengers on board / seats."),
+		widgets.whereIcon(vehicle.atStation),
+	}, "mls-compact-row")
 end
 
 -- The vehicles between the selected stop and the next one. Reads the same
@@ -267,8 +265,8 @@ local function vehiclesPanel(stats : MlsLineStats, selected : integer, onHide : 
 	local name = stats.stopNames[selected] or "?"
 	local nextName = stats.stopNames[(selected % count) + 1] or "?"
 	local rows : {TreeNodeId} = {}
-	for _, v in ipairs(stats.vehicles) do
-		if v.leg == selected then rows[#rows + 1] = vehicleRow(v) end
+	for _, vehicle in ipairs(stats.vehicles) do
+		if vehicle.leg == selected then rows[#rows + 1] = vehicleRow(vehicle) end
 	end
 	local hide = button_react_util.makeTextButton("primary", "Hide", onHide, LESS_TOOLTIP)
 	local children : {TreeNodeId} = {
@@ -299,37 +297,37 @@ end
 
 local function destinationRow(dest : MlsDestination) : TreeNodeId
 	return locateHeading(dest.stationGroup, "To " .. dest.name, "font-scale-body, mls-destination",
-		"Lines that go from the selected stop to " .. dest.name .. ", fastest first.")
+		"Lines from the selected stop to this station, fastest first.")
 end
 
 -- "<time>  <colour> <line name>  <difference>". Every name is a NameTextView
 -- so the rows share one height; this line's click does nothing, the others
 -- open their own window.
-local function competingRow(line : MlsCompetingLine, data : MlsCompeting, dest : MlsDestination) : TreeNodeId
+local function competingRow(line : MlsCompetingLine, dest : MlsDestination) : TreeNodeId
 	local nameNode = line_react_util.NameTextView{
 		entity = line.lineId,
 		onClickOverride = line.isThisLine
 			and function(_ : Engine.Entity) end
-			or function(e : Engine.Entity) openLineDetails(e) end,
-		tooltip = line.isThisLine and "The line this window is about." or ("Open Line Details for " .. line.name),
+			or function(entity : Engine.Entity) openLineDetails(entity) end,
+		tooltip = line.isThisLine and "This line" or "Open Line Details",
 		styleClass = "mls-line-name",
 	}
 	local diffClass = isFaster(line, dest)
 		and "font-scale-body, mls-time, mls-faster"
 		or "font-scale-body, mls-time"
 	return tableRow(COMPETING_COLUMN_WEIGHTS, {
-		text(competingTimeStr(line), "font-scale-body, mls-time", competingTimeTooltip(line, data, dest)),
+		text(competingTimeStr(line), "font-scale-body, mls-time", competingTimeTooltip(line)),
 		line_react_util.ColorWidget{ entity = line.lineId },
 		nameNode,
 		text(differenceStr(line, dest), diffClass, differenceTooltip(line, dest)),
-	}, "mls-competing-row")
+	}, "mls-compact-row")
 end
 
 local CompetingPanel = react.RegisterRecipe(
 	"MlsCompetingPanel",
-	function(p : CompetingParams) : TreeNodeId
-		local lineId : Engine.Entity = p.lineId
-		local stopIndex : integer = p.stopIndex
+	function(params : CompetingParams) : TreeNodeId
+		local lineId : Engine.Entity = params.lineId
+		local stopIndex : integer = params.stopIndex
 
 		local state = engine_react_util.useStepStateTimer(function() : MlsCompeting
 			return stationsHelper.getCompeting(lineId, stopIndex)
@@ -354,7 +352,7 @@ local CompetingPanel = react.RegisterRecipe(
 				for _, dest in ipairs(data.destinations) do
 					rows[#rows + 1] = destinationRow(dest)
 					for _, line in ipairs(dest.lines) do
-						rows[#rows + 1] = competingRow(line, data, dest)
+						rows[#rows + 1] = competingRow(line, dest)
 					end
 				end
 				-- A ScrollArea rather than a List, so clicks don't highlight
@@ -384,17 +382,12 @@ local CompetingPanel = react.RegisterRecipe(
 -- LINE DETAILS WINDOW
 ------------------------------------------------------------
 
--- The window body (widgets.windowBody): the class carries the minimum width.
-local function detailsBody(children : {TreeNodeId}, class? : string) : TreeNodeId
-	return w.windowBody(class or "mls-details", children)
-end
-
 local LineDetailsContent = react.RegisterRecipe(
 	"MlsLineDetailsContent",
-	function(p : WindowParams) : TreeNodeId
-		local lineId : Engine.Entity = p.lineId
+	function(params : WindowParams) : TreeNodeId
+		local lineId : Engine.Entity = params.lineId
 
-		react.useInputAction("IA_MENU_BACK", react.iaHandler(p.onClose))
+		react.useInputAction("IA_MENU_BACK", react.iaHandler(params.onClose))
 		react.onMount(function()
 			openWindows[lineId] = true
 			luaUtils.debug("window opened for line " .. tostring(lineId))
@@ -410,8 +403,9 @@ local LineDetailsContent = react.RegisterRecipe(
 		end, REFRESH_SECONDS)
 		local stats = statsState:old()
 
-		-- Selected stop, 1-based; stop 1 on open.
-		local selState = react.useState(1) as ReactStateT<integer>
+		-- Selected stop, 1-based; stop 1 on open unless the opener asked for
+		-- another (the station window preselects the stop at its station).
+		local selState = react.useState(params.initialStop or 1) as ReactStateT<integer>
 		-- Whether the competing-lines panel is shown. nil until the user
 		-- presses More/Less; until then it follows whether the line has any
 		-- competition at all. Hidden, the panel's recipe is not mounted, so
@@ -420,7 +414,7 @@ local LineDetailsContent = react.RegisterRecipe(
 
 		local message = messageFor(stats)
 		if message ~= nil then
-			return detailsBody({ text(message, "font-scale-body") })
+			return widgets.windowBody("mls-details-narrow", { text(message, "font-scale-body") })
 		end
 
 		-- Clamp in case the line lost stops since the selection was made.
@@ -429,7 +423,8 @@ local LineDetailsContent = react.RegisterRecipe(
 		if selected == nil or selected < 1 or selected > count then selected = 1 end
 
 		local choice = showState:old()
-		local shown : boolean = choice ~= nil and choice or (choice == nil and stats.hasCompetition)
+		local shown : boolean = stats.hasCompetition
+		if choice ~= nil then shown = choice end
 		local toggle = button_react_util.makeTextButton(
 			"primary",
 			shown and "<- Less" or "-> More",
@@ -456,13 +451,13 @@ local LineDetailsContent = react.RegisterRecipe(
 				icon(ICON_SPEED, "Speed: average speed to the next stop, crow-flies distance over driving time where known."),
 				icon(ICON_TIME, "To next: average time from this stop to the next one, including time at stations."),
 			}),
-			stopList(stats, selected, function(i : integer)
-				if i >= 1 then selState:set(i) end
+			stopList(stats, selected, function(index : integer)
+				if index >= 1 then selState:set(index) end
 			end),
 		})
 
 		if not shown then
-			return detailsBody({ left }, "mls-details-narrow")
+			return widgets.windowBody("mls-details-narrow", { left })
 		end
 
 		-- Keyed by stop index and station group, so the panel remounts if
@@ -476,20 +471,20 @@ local LineDetailsContent = react.RegisterRecipe(
 			} as CompetingParams),
 		})
 
-		return detailsBody({ left, right })
+		return widgets.windowBody("mls-details", { left, right })
 	end)
 
 local LineDetailsWindow = react.RegisterWrapperRecipe(
 	"MlsLineDetailsWindow",
 	builtin.Window,
-	function(p : WindowParams) : TreeNodeId
+	function(params : WindowParams) : TreeNodeId
 		local win : builtin.WindowParam = {
-			id = windowKey(p.lineId),
-			title = p.title,
-			onClose = p.onClose,
+			id = windowKey(params.lineId),
+			title = params.title,
+			onClose = params.onClose,
 			closable = true,
 			autoFocusOnBecomingVisible = true,
-			content = LineDetailsContent(p),
+			content = LineDetailsContent(params),
 		}
 		-- Style class so the stylesheet can centre the window
 		-- (`Window!mls-details-window`); the game's entity window sets
@@ -498,7 +493,9 @@ local LineDetailsWindow = react.RegisterWrapperRecipe(
 		return builtin.Window(win)
 	end)
 
-openLineDetails = function(lineId : Engine.Entity)
+-- `stopIndex` (optional, 1-based) is selected when the window opens; an
+-- already open window is only brought to the front (user's decision).
+openLineDetails = function(lineId : Engine.Entity, stopIndex? : integer)
 	if lineId == nil or not api.engine.entityExists(lineId) then return end
 	local winApi = game_react_globals.getDefaultWindowApi()
 	local key = windowKey(lineId)
@@ -513,6 +510,7 @@ openLineDetails = function(lineId : Engine.Entity)
 	winApi.addWindow(LineDetailsWindow, key, {
 		lineId = lineId,
 		title = "Line Details: " .. name,
+		initialStop = stopIndex,
 		onClose = function()
 			winApi.removeWindow(LineDetailsWindow, key)
 			openWindows[lineId] = nil
@@ -533,7 +531,7 @@ end
 -- without passengers or without cargo gets a message in the window instead.
 local MlsCardContent = react.RegisterRecipe(
 	"MlsCardContent",
-	function(p : CardParams) : TreeNodeId
+	function(params : CardParams) : TreeNodeId
 		return builtin.BoxLayout{
 			orientation = builtin.type.Orientation.Horizontal,
 			children = {
@@ -542,13 +540,13 @@ local MlsCardContent = react.RegisterRecipe(
 				button_react_util.makeTextButton(
 					"primary,mls-card-btn",
 					"Passengers",
-					function() openLineDetails(p.lineId) end,
+					function() openLineDetails(params.lineId) end,
 					"Passengers on this line: waiting and unhappy per stop, demand per section, "
 					.. "times and speeds between stops, vehicles on each section and the competing lines."),
 				button_react_util.makeTextButton(
 					"primary",
 					"Cargo",
-					function() cargoGui.openCargoDetails(p.lineId) end,
+					function() cargoGui.openCargoDetails(params.lineId) end,
 					"Cargo on this line: what each stop loads, cargo on each section, "
 					.. "times and speeds between stops, vehicles on each section and the cargo types carried."),
 				gui_react_util.makeHorizontalSpacer(),

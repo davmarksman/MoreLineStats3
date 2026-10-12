@@ -1,6 +1,6 @@
--- Text for the Line Details window: times, distances, speeds, differences
--- and their tooltips. Pure functions over the plain tables the collectors
--- return; no engine reads. Runs on the GUI thread (api.util formatters).
+-- Text for the windows: times, distances, speeds, differences and their
+-- tooltips. Pure functions over the plain tables the collectors return; no
+-- engine reads. Runs on the GUI thread (api.util formatters).
 -- Types live in tealdef/mls_def.d.tl (MlsFormatting).
 
 local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
@@ -14,21 +14,20 @@ local function legTimeStr(leg : MlsLeg) : string
 	return (leg.estimated and "~" or "") .. luaUtils.getTimeStr(leg.time)
 end
 
--- "8:45 (7:58 driving, 0:47 at stations)", or just the total without a
--- driving time.
-local function splitStr(leg : MlsLeg) : string
-	local total = luaUtils.getTimeStr(leg.time)
-	if leg.drive <= 0 or leg.drive > leg.time then return total end
+-- "7:58 driving, 0:47 at stations": the split a time cell can't show.
+-- Nil without a driving time.
+local function splitNote(leg : MlsLeg) : string
+	if leg.drive <= 0 or leg.drive > leg.time then return nil end
 	local atStations = leg.time - leg.drive
-	return total .. " (" .. luaUtils.getTimeStr(leg.drive) .. " driving, "
-		.. (atStations >= 1 and luaUtils.getTimeStr(atStations) or "0:00") .. " at stations)"
+	return luaUtils.getTimeStr(leg.drive) .. " driving, "
+		.. (atStations >= 1 and luaUtils.getTimeStr(atStations) or "0:00") .. " at stations"
 end
 
 local function legTooltip(leg : MlsLeg, isLast : boolean) : string
 	if leg.time <= 0 then return "No time known for this leg yet." end
-	local text = "Average time from this stop to the next one"
-		.. (isLast and " (back to stop 1)" or "")
-		.. ", including time at stations: " .. splitStr(leg) .. "."
+	local text = "Time to the next stop" .. (isLast and " (back to stop 1)" or "") .. ", including time at stations."
+	local split = splitNote(leg)
+	if split ~= nil then text = text .. "\n" .. split end
 	if leg.estimated then text = text .. "\n" .. ESTIMATED_NOTE end
 	return text
 end
@@ -45,14 +44,16 @@ end
 -- Crow-flies distance over driving time (the TF2 figure); the total time
 -- if no driving time is known.
 local function speedStr(leg : MlsLeg) : string
-	local t = leg.drive > 0 and leg.drive or leg.time
-	if leg.distance <= 0 or t <= 0 then return "?" end
-	return api.util.formatSpeed(leg.distance / t)
+	local seconds = leg.drive > 0 and leg.drive or leg.time
+	if leg.distance <= 0 or seconds <= 0 then return "?" end
+	return api.util.formatSpeed(leg.distance / seconds)
 end
 
 local function journeyTooltip(journey : MlsLeg) : string
 	if journey.time <= 0 then return "The journey time is unknown until every leg has a time." end
-	local text = "One full round trip, including time at stations: " .. splitStr(journey) .. "."
+	local text = "One full round trip, including time at stations."
+	local split = splitNote(journey)
+	if split ~= nil then text = text .. "\n" .. split end
 	if journey.estimated then text = text .. "\nIncludes estimated legs, marked ~." end
 	return text
 end
@@ -71,12 +72,9 @@ local function competingTimeStr(line : MlsCompetingLine) : string
 	return legTimeStr({ time = line.time, drive = 0, estimated = line.estimated, distance = 0 })
 end
 
-local function competingTimeTooltip(line : MlsCompetingLine, data : MlsCompeting, dest : MlsDestination) : string
-	if line.time <= 0 then
-		return "No time known yet: a leg between these stations has no time on this line."
-	end
-	local text = "Time on " .. line.name .. " from " .. data.fromName .. " to " .. dest.name
-		.. ", including time at stations: " .. luaUtils.getTimeStr(line.time) .. "."
+local function competingTimeTooltip(line : MlsCompetingLine) : string
+	if line.time <= 0 then return "No time known for this line yet." end
+	local text = "Time, including time at stations."
 	if line.estimated then text = text .. "\nIncludes estimated legs, marked ~." end
 	return text
 end
@@ -86,10 +84,10 @@ end
 local function differenceStr(line : MlsCompetingLine, dest : MlsDestination) : string
 	if line.isThisLine then return "(current)" end
 	if line.time <= 0 or dest.thisLineTime <= 0 then return "" end
-	local d = line.time - dest.thisLineTime
-	if math.abs(d) < 0.5 then return "same" end
+	local difference = line.time - dest.thisLineTime
+	if math.abs(difference) < 0.5 then return "same" end
 	local prefix = (line.estimated or dest.thisLineEstimated) and "~" or ""
-	return prefix .. (d < 0 and "-" or "+") .. luaUtils.getTimeStr(math.abs(d))
+	return prefix .. (difference < 0 and "-" or "+") .. luaUtils.getTimeStr(math.abs(difference))
 end
 
 local function isFaster(line : MlsCompetingLine, dest : MlsDestination) : boolean
@@ -98,21 +96,43 @@ local function isFaster(line : MlsCompetingLine, dest : MlsDestination) : boolea
 end
 
 local function differenceTooltip(line : MlsCompetingLine, dest : MlsDestination) : string
-	if line.isThisLine then return "The line this window is about." end
+	if line.isThisLine then return "This line" end
 	if line.time <= 0 or dest.thisLineTime <= 0 then
 		return "No difference: one of the two times is unknown."
 	end
-	local d = line.time - dest.thisLineTime
-	if math.abs(d) < 0.5 then return "Takes the same time as this line." end
-	local text = luaUtils.getTimeStr(math.abs(d)) .. (d < 0 and " faster" or " slower")
-		.. " than this line to " .. dest.name .. "."
+	local difference = line.time - dest.thisLineTime
+	if math.abs(difference) < 0.5 then return "Same time as this line." end
+	local text = difference < 0 and "Faster than this line." or "Slower than this line."
 	if line.estimated or dest.thisLineEstimated then
 		text = text .. "\nOne of the times includes estimated legs."
 	end
 	return text
 end
 
-local M : MlsFormatting = {
+-- Station window: the difference against the fastest line to the destination
+-- rather than against "this line".
+
+-- "fastest" for every line within half a second of the best time, "+1:35"
+-- behind it otherwise; "" if either time is unknown; "~" in front if either
+-- time includes an estimate.
+local function fastestDifferenceStr(line : MlsCompetingLine, dest : MlsStationDestination) : string
+	if line.time <= 0 or dest.fastestTime <= 0 then return "" end
+	if line.isFastest then return "fastest" end
+	local prefix = (line.estimated or dest.fastestEstimated) and "~" or ""
+	return prefix .. "+" .. luaUtils.getTimeStr(line.time - dest.fastestTime)
+end
+
+local function fastestDifferenceTooltip(line : MlsCompetingLine, dest : MlsStationDestination) : string
+	if line.time <= 0 then return "No time known for this line yet." end
+	if dest.fastestTime <= 0 then return "No line has a known time to this destination yet." end
+	local text = line.isFastest and "Fastest to this station." or "Slower than the fastest line."
+	if line.estimated or dest.fastestEstimated then
+		text = text .. "\nOne of the times includes estimated legs."
+	end
+	return text
+end
+
+local exports : MlsFormatting = {
 	legTimeStr = legTimeStr,
 	legTooltip = legTooltip,
 	distanceStr = distanceStr,
@@ -124,5 +144,7 @@ local M : MlsFormatting = {
 	differenceStr = differenceStr,
 	isFaster = isFaster,
 	differenceTooltip = differenceTooltip,
+	fastestDifferenceStr = fastestDifferenceStr,
+	fastestDifferenceTooltip = fastestDifferenceTooltip,
 }
-return M
+return exports

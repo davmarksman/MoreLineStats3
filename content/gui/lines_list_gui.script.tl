@@ -18,11 +18,15 @@ local main_mod_button_area = ug_require "::/gui/main/main_mod_button_area.tl" as
 local LINES_HELPER : string = "bottle_more_line_stats::/scripts/lines_helper.script.tl"
 local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
 local FORMATTING : string = "bottle_more_line_stats::/gui/formatting.script.tl"
+local WIDGETS : string = "bottle_more_line_stats::/gui/widgets.script.tl"
 local LINE_GUI : string = "bottle_more_line_stats::/gui/line_gui.script.tl"
 local linesHelper = require(LINES_HELPER) as MlsLinesHelper
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 local fmt = require(FORMATTING) as MlsFormatting
+local widgets = require(WIDGETS) as MlsWidgets
 local lineGui = require(LINE_GUI) as MlsLineGui
+
+local text, sectionTitle = widgets.text, widgets.sectionTitle
 
 -- Dotted like the timetable mod's id: the stylesheet rule "Window#<id>"
 -- that centres the window is keyed on it.
@@ -81,24 +85,19 @@ local record FilterState
 	search : string
 end
 
--- A sortable column: a text or icon header, and the value to sort by
--- (nil for the name, which sorts alphabetically).
+-- A sortable column: a text header (label) or an icon header (iconPath),
+-- and the value to sort by (nil for the name, which sorts alphabetically).
 local record Column
 	key : string
 	label : string
 	iconPath : string
-	percent : boolean
 	tooltip : string
 	value : function(MlsLineRow) : number
 end
 
 ------------------------------------------------------------
--- WIDGET HELPERS (same rules as line_gui: cells are widgets or Components)
+-- WIDGET HELPERS (the shared ones live in gui/widgets.script.tl)
 ------------------------------------------------------------
-
-local function text(str : string, class : string, tooltip? : string) : TreeNodeId
-	return builtin.TextView{ meta = { class = class, tooltip = tooltip }, text = str }
-end
 
 local function num(str : string, tooltip? : string) : TreeNodeId
 	return text(str, "font-scale-body, mls-time", tooltip)
@@ -124,23 +123,7 @@ local function iconNum(path : string, str : string, tooltip? : string) : TreeNod
 end
 
 local function tableRow(cells : {TreeNodeId}, class? : string) : TreeNodeId
-	return builtin.Component{
-		meta = { class = class },
-		layout = builtin.TableLayout{
-			columnWeights = COLUMN_WEIGHTS,
-			rows = { builtin.Row{ cells = cells } },
-		},
-	}
-end
-
-local function titleRow(label : string, tooltip : string, trailing : TreeNodeId) : TreeNodeId
-	return builtin.Component{
-		meta = { class = "mls-section-title" },
-		layout = builtin.BoxLayout{
-			orientation = builtin.type.Orientation.Horizontal,
-			children = { text(label, "font-scale-body", tooltip), gui_react_util.makeHorizontalSpacer(), trailing },
-		},
-	}
+	return widgets.tableRow(COLUMN_WEIGHTS, cells, class)
 end
 
 ------------------------------------------------------------
@@ -149,43 +132,42 @@ end
 
 -- Average speed as a number for sorting: length over driving time, the
 -- total time without one; 0 if unknown.
-local function speedOf(r : MlsLineRow) : number
-	local t = r.journey.drive > 0 and r.journey.drive or r.journey.time
-	if r.journey.distance <= 0 or t <= 0 then return 0 end
-	return r.journey.distance / t
+local function speedOf(row : MlsLineRow) : number
+	local seconds = row.journey.drive > 0 and row.journey.drive or row.journey.time
+	if row.journey.distance <= 0 or seconds <= 0 then return 0 end
+	return row.journey.distance / seconds
 end
 
 -- One entry per header cell after the colour swatch, in column order.
--- Text headers (an entry with iconPath instead of label draws an icon).
 local COLUMNS : {Column} = {
 	{ key = "name", label = "Name", tooltip = "Click a line to open its Line Details window." },
 	{ key = "demand", label = "Demand", tooltip = "Demand: passengers on the line now, in vehicles plus waiting at stops.",
-		value = function(r : MlsLineRow) : number return r.demand end },
+		value = function(row : MlsLineRow) : number return row.demand end },
 	{ key = "demandPct", label = "Demand %",
 		tooltip = "Demand as a share of the line's passenger capacity. High values mean there may not be enough vehicles.",
-		value = function(r : MlsLineRow) : number return r.demandPct end },
+		value = function(row : MlsLineRow) : number return row.demandPct end },
 	{ key = "load", label = "Load", tooltip = "Load / capacity: passengers in the line's vehicles now, and the line's passenger capacity.",
-		value = function(r : MlsLineRow) : number return r.onBoard end },
+		value = function(row : MlsLineRow) : number return row.onBoard end },
 	{ key = "waiting", label = "Waiting", tooltip = "Waiting: passengers waiting for the line at all of its stops.",
-		value = function(r : MlsLineRow) : number return r.waiting end },
+		value = function(row : MlsLineRow) : number return row.waiting end },
 	{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = "Unhappy: passengers unhappy with the line, waiting or on board, by the game's own measure.",
-		value = function(r : MlsLineRow) : number return r.unhappy end },
+		value = function(row : MlsLineRow) : number return row.unhappy end },
 	{ key = "busiest", label = "Busiest",
 		tooltip = "Busiest: passengers waiting at the line's busiest stop.",
-		value = function(r : MlsLineRow) : number return r.busiest end },
+		value = function(row : MlsLineRow) : number return row.busiest end },
 	{ key = "journey", label = "Journey", tooltip = "Journey: one full round trip, including time at stations. ~ means a leg is still estimated.",
-		value = function(r : MlsLineRow) : number return r.journey.time end },
+		value = function(row : MlsLineRow) : number return row.journey.time end },
 	{ key = "length", label = "Length", tooltip = "Length: line length as the crow flies.",
-		value = function(r : MlsLineRow) : number return r.journey.distance end },
+		value = function(row : MlsLineRow) : number return row.journey.distance end },
 	{ key = "speed", label = "Speed", tooltip = "Average speed: line length over driving time.", value = speedOf },
 	{ key = "frequency", label = "Freq.", tooltip = "Frequency: time between two vehicles of the line.",
-		value = function(r : MlsLineRow) : number return r.frequency end },
+		value = function(row : MlsLineRow) : number return row.frequency end },
 }
 
 -- A header cell: a chrome-less button that fills the whole cell (so the
 -- hover highlight covers it, as in the game's own tables), holding the
--- label or icon (plus "%") and the sort arrow when this is the sorted
--- column. Right-aligned like the numbers below, except the Line header.
+-- label or icon and the sort arrow when this is the sorted column.
+-- Right-aligned like the numbers below, except the Name header.
 local function headerCell(col : Column, sort : SortState, onSort : function(string)) : TreeNodeId
 	local tooltip = col.tooltip .. "\nClick to sort by this column; click again to reverse."
 	-- The button centres its content by default; the two classes anchor it
@@ -200,7 +182,6 @@ local function headerCell(col : Column, sort : SortState, onSort : function(stri
 			path = col.iconPath,
 			scaling = builtin.type.ImageViewScaling.AutoFit,
 		}
-		if col.percent then content[#content + 1] = text("%", "font-scale-annotation", tooltip) end
 	end
 	if sort.key == col.key then
 		content[#content + 1] = builtin.ImageView{
@@ -229,37 +210,37 @@ local function headerRow(sort : SortState, onSort : function(string)) : TreeNode
 	return tableRow(cells, "mls-lines-header")
 end
 
-local function lineRow(r : MlsLineRow) : TreeNodeId
+local function lineRow(row : MlsLineRow) : TreeNodeId
 	local nameNode = line_react_util.NameTextView{
-		entity = r.lineId,
-		onClickOverride = function(e : Engine.Entity) lineGui.openLineDetails(e) end,
-		tooltip = "Open Line Details for " .. r.name,
+		entity = row.lineId,
+		onClickOverride = function(entity : Engine.Entity) lineGui.openLineDetails(entity) end,
+		tooltip = "Open Line Details",
 		styleClass = "mls-line-name",
 	}
-	local frequency = r.frequency > 0 and luaUtils.getTimeStr(r.frequency) or "?"
+	local frequency = row.frequency > 0 and luaUtils.getTimeStr(row.frequency) or "?"
 	-- The colour swatch opens the game's own line window (the "selectEntity"
 	-- event is what the timetable mod fires for the same purpose).
 	local colourButton = builtin.Button{
-		meta = { class = "mls-colour-btn", tooltip = "Open the game's line window for " .. r.name },
-		content = line_react_util.ColorWidget{ entity = r.lineId },
+		meta = { class = "mls-colour-btn", tooltip = "Open the game's line window" },
+		content = line_react_util.ColorWidget{ entity = row.lineId },
 		onClick = function()
-			react.fireEvent(nil, "selectEntity", { entity = r.lineId, stack = true })
+			react.fireEvent(nil, "selectEntity", { entity = row.lineId, stack = true })
 		end,
 	}
 	return tableRow({
 		colourButton,
 		nameNode,
-		num(tostring(r.demand)),
-		num(r.capacity > 0 and (tostring(r.demandPct) .. "%") or "?"),
-		num(tostring(r.onBoard) .. "/" .. tostring(r.capacity)),
-		iconNum(ICON_PASSENGERS, tostring(r.waiting)),
-		iconNum(ICON_UNHAPPY, tostring(r.unhappy)),
-		num(tostring(r.busiest)),
-		num(fmt.legTimeStr(r.journey), fmt.journeyTooltip(r.journey)),
-		num(fmt.distanceStr(r.journey.distance)),
-		num(fmt.speedStr(r.journey)),
+		num(tostring(row.demand)),
+		num(row.capacity > 0 and (tostring(row.demandPct) .. "%") or "?"),
+		num(tostring(row.onBoard) .. "/" .. tostring(row.capacity)),
+		iconNum(ICON_PASSENGERS, tostring(row.waiting)),
+		iconNum(ICON_UNHAPPY, tostring(row.unhappy)),
+		num(tostring(row.busiest)),
+		num(fmt.legTimeStr(row.journey), fmt.journeyTooltip(row.journey)),
+		num(fmt.distanceStr(row.journey.distance)),
+		num(fmt.speedStr(row.journey)),
 		num(frequency),
-	}, "mls-competing-row")
+	}, "mls-compact-row")
 end
 
 ------------------------------------------------------------
@@ -285,15 +266,15 @@ local function filterRow(filter : FilterState, onKind : function(string), onSear
 		filterToggle(text("All", "font-scale-body"), "All passenger lines", filter.kind == "all",
 			function() onKind("all") end),
 	}
-	for _, f in ipairs(KIND_FILTERS) do
-		local kind = f.kind
+	for _, kindFilter in ipairs(KIND_FILTERS) do
+		local kind = kindFilter.kind
 		children[#children + 1] = filterToggle(
 			builtin.ImageView{
 				meta = { class = "mls-header-icon" },
-				path = f.iconPath,
+				path = kindFilter.iconPath,
 				scaling = builtin.type.ImageViewScaling.AutoFit,
 			},
-			f.tooltip, filter.kind == kind, function() onKind(kind) end)
+			kindFilter.tooltip, filter.kind == kind, function() onKind(kind) end)
 	end
 	children[#children + 1] = gui_react_util.makeHorizontalSpacer()
 	children[#children + 1] = builtin.TextInputField{
@@ -334,12 +315,12 @@ local function nameMatches(name : string, terms : {string}) : boolean
 end
 
 -- Rows that pass the kind and search filters.
-local function filteredRows(t : MlsLinesTable, filter : FilterState) : {MlsLineRow}
+local function filteredRows(linesTable : MlsLinesTable, filter : FilterState) : {MlsLineRow}
 	local terms = searchTerms(filter.search)
 	local rows : {MlsLineRow} = {}
-	for _, r in ipairs(t.rows) do
-		if (filter.kind == "all" or r.kind == filter.kind) and nameMatches(r.name, terms) then
-			rows[#rows + 1] = r
+	for _, row in ipairs(linesTable.rows) do
+		if (filter.kind == "all" or row.kind == filter.kind) and nameMatches(row.name, terms) then
+			rows[#rows + 1] = row
 		end
 	end
 	return rows
@@ -356,18 +337,18 @@ end
 -- by name, A to Z.
 local function sortRows(rows : {MlsLineRow}, sort : SortState) : {MlsLineRow}
 	local col = columnByKey(sort.key)
-	local function byName(a : MlsLineRow, b : MlsLineRow) : boolean
-		return string.lower(a.name) < string.lower(b.name)
+	local function byName(rowA : MlsLineRow, rowB : MlsLineRow) : boolean
+		return string.lower(rowA.name) < string.lower(rowB.name)
 	end
-	table.sort(rows, function(a : MlsLineRow, b : MlsLineRow) : boolean
+	table.sort(rows, function(rowA : MlsLineRow, rowB : MlsLineRow) : boolean
 		if col.value == nil then
-			if sort.ascending then return byName(a, b) end
-			return byName(b, a)
+			if sort.ascending then return byName(rowA, rowB) end
+			return byName(rowB, rowA)
 		end
-		local va, vb = col.value(a), col.value(b)
-		if va == vb then return byName(a, b) end
-		if sort.ascending then return va < vb end
-		return va > vb
+		local valueA, valueB = col.value(rowA), col.value(rowB)
+		if valueA == valueB then return byName(rowA, rowB) end
+		if sort.ascending then return valueA < valueB end
+		return valueA > valueB
 	end)
 	return rows
 end
@@ -378,8 +359,8 @@ end
 -- fixed-width box beside a spacer and keep their width at any text scale.
 local function linesList(shown : {MlsLineRow}, sort : SortState, emptyMessage : string) : TreeNodeId
 	local rows : {TreeNodeId} = {}
-	for _, r in ipairs(sortRows(shown, sort)) do
-		rows[#rows + 1] = lineRow(r)
+	for _, row in ipairs(sortRows(shown, sort)) do
+		rows[#rows + 1] = lineRow(row)
 	end
 	if #rows == 0 then rows[1] = text(emptyMessage, "font-scale-body") end
 	return builtin.ScrollArea{
@@ -406,13 +387,13 @@ local function linesList(shown : {MlsLineRow}, sort : SortState, emptyMessage : 
 	}
 end
 
-local function footer(t : MlsLinesTable) : string
+local function footer(linesTable : MlsLinesTable) : string
 	local parts : {string} = {}
-	if t.cargoLines > 0 then
-		parts[#parts + 1] = tostring(t.cargoLines) .. (t.cargoLines == 1 and " cargo line" or " cargo lines")
+	if linesTable.cargoLines > 0 then
+		parts[#parts + 1] = tostring(linesTable.cargoLines) .. (linesTable.cargoLines == 1 and " cargo line" or " cargo lines")
 	end
-	if t.otherLines > 0 then
-		parts[#parts + 1] = tostring(t.otherLines) .. (t.otherLines == 1 and " line" or " lines") .. " without vehicles"
+	if linesTable.otherLines > 0 then
+		parts[#parts + 1] = tostring(linesTable.otherLines) .. (linesTable.otherLines == 1 and " line" or " lines") .. " without vehicles"
 	end
 	if #parts == 0 then return nil end
 	return table.concat(parts, " and ") .. " not shown."
@@ -424,13 +405,13 @@ end
 
 local LinesWindowContent = react.RegisterRecipe(
 	"MlsLinesWindowContent",
-	function(p : LinesWindowParams) : TreeNodeId
-		react.useInputAction("IA_MENU_BACK", react.iaHandler(p.onClose))
+	function(params : LinesWindowParams) : TreeNodeId
+		react.useInputAction("IA_MENU_BACK", react.iaHandler(params.onClose))
 
 		-- The rows live in state so Refresh can replace them. The first
 		-- value is what the button's click handler computed.
-		local tableState = react.useState(p.table) as ReactStateT<MlsLinesTable>
-		local t : MlsLinesTable = tableState:old()
+		local tableState = react.useState(params.table) as ReactStateT<MlsLinesTable>
+		local linesTable : MlsLinesTable = tableState:old()
 
 		-- Name A to Z on open. A click on the sorted column reverses it; a
 		-- click on another column sorts by that, numbers largest first.
@@ -459,17 +440,17 @@ local LinesWindowContent = react.RegisterRecipe(
 			"Read all lines again. The list does not refresh by itself.")
 
 		local children : {TreeNodeId} = {}
-		if t == nil then
+		if linesTable == nil then
 			children[1] = text("Loading...", "font-scale-body")
-		elseif t.error ~= nil then
-			children[1] = titleRow("Could not read the lines", nil, refresh)
-			children[2] = text(tostring(t.error), "font-scale-body")
+		elseif linesTable.error ~= nil then
+			children[1] = sectionTitle("Could not read the lines", nil, refresh)
+			children[2] = text(tostring(linesTable.error), "font-scale-body")
 		else
-			local count = #t.rows
-			local shown = filteredRows(t, filter)
+			local count = #linesTable.rows
+			local shown = filteredRows(linesTable, filter)
 			local title = tostring(count) .. (count == 1 and " passenger line" or " passenger lines")
 			if #shown ~= count then title = tostring(#shown) .. " of " .. title end
-			children[1] = titleRow(title, "Figures as they were when the list was computed; press Refresh for current ones.", refresh)
+			children[1] = sectionTitle(title, "Figures as they were when the list was computed; press Refresh for current ones.", refresh)
 			if count == 0 then
 				children[2] = text("You have no passenger lines with vehicles.", "font-scale-body")
 			else
@@ -481,7 +462,7 @@ local LinesWindowContent = react.RegisterRecipe(
 			-- room so the parts above pack together instead of spreading
 			-- out, and the footer stays at the bottom.
 			children[#children + 1] = gui_react_util.makeVerticalSpacer()
-			local note = footer(t)
+			local note = footer(linesTable)
 			if note ~= nil then children[#children + 1] = text(note, "font-scale-annotation") end
 		end
 
@@ -499,14 +480,14 @@ local LinesWindowContent = react.RegisterRecipe(
 local LinesWindow = react.RegisterWrapperRecipe(
 	"MlsLinesWindow",
 	builtin.Window,
-	function(p : LinesWindowParams) : TreeNodeId
+	function(params : LinesWindowParams) : TreeNodeId
 		return builtin.Window{
 			id = WINDOW_ID,
 			title = "More Line Stats",
-			onClose = p.onClose,
+			onClose = params.onClose,
 			closable = true,
 			autoFocusOnBecomingVisible = true,
-			content = LinesWindowContent(p),
+			content = LinesWindowContent(params),
 		}
 	end)
 
@@ -537,11 +518,11 @@ local LinesButton = react.RegisterPluginRecipe(
 		local function open()
 			local winApi = game_react_globals.getDefaultWindowApi()
 			if winApi == nil then return end
-			local t = linesHelper.collectAll()
-			winApi.addSingletonWindow(LinesWindow, { onClose = onClose, table = t } as LinesWindowParams)
+			local linesTable = linesHelper.collectAll()
+			winApi.addSingletonWindow(LinesWindow, { onClose = onClose, table = linesTable } as LinesWindowParams)
 			windowIsOpen = true
 			openState:set(true)
-			luaUtils.debug("lines window opened with " .. tostring(#t.rows) .. " rows")
+			luaUtils.debug("lines window opened with " .. tostring(#linesTable.rows) .. " rows")
 		end
 
 		return builtin.BoxLayout{
@@ -565,7 +546,7 @@ local LinesButton = react.RegisterPluginRecipe(
 		}
 	end)
 
-luaUtils.debug("linesGui loaded")
+luaUtils.debug("linesListGui loaded")
 
 return {
 	MlsLinesButton = LinesButton,

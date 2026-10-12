@@ -45,9 +45,9 @@ local function getLegs(lineId : Engine.Entity, stopCount : integer, cargoId? : C
 	for i = 1, stopCount do
 		local leg = unknownLeg()
 		if info ~= nil then
-			local t = info.sectionTimes[i]
-			if t ~= nil and t > 0 then
-				leg.time = t
+			local sectionTime = info.sectionTimes[i]
+			if sectionTime ~= nil and sectionTime > 0 then
+				leg.time = sectionTime
 				leg.drive = info.driveSectionTimes[i] or 0
 				local real = info.realSectionTimes[i]
 				leg.estimated = real == nil or real[2] == nil or real[2] == 0
@@ -93,23 +93,23 @@ end
 -- construction's transform for built stations. Bus and tram stops have no
 -- construction; their first terminal's node id names the street edge, whose
 -- BASE_EDGE holds both end positions, so the stop is at the midpoint.
-local function stationPositionUnsafe(sg : Engine.Entity) : Pos
-	local group = api.engine.getComponent(sg, CT.STATION_GROUP) as Engine.Component.StationGroup
+local function stationPositionUnsafe(stationGroup : Engine.Entity) : Pos
+	local group = api.engine.getComponent(stationGroup, CT.STATION_GROUP) as Engine.Component.StationGroup
 	if group == nil or group.stations == nil or group.stations[1] == nil then return nil end
 	local station = group.stations[1]
 
 	local constr = api.engine.system.streetConnectorSystem.getConstructionEntityForStation(station)
 	if constr ~= nil and constr ~= -1 and api.engine.entityExists(constr) then
-		local c = api.engine.getComponent(constr, CT.CONSTRUCTION) as Engine.Component.Construction
-		if c ~= nil and c.transf ~= nil then
-			local t = c.transf:getTransl()
-			return { x = t.x, y = t.y, z = t.z }
+		local construction = api.engine.getComponent(constr, CT.CONSTRUCTION) as Engine.Component.Construction
+		if construction ~= nil and construction.transf ~= nil then
+			local translation = construction.transf:getTransl()
+			return { x = translation.x, y = translation.y, z = translation.z }
 		end
 	end
 
-	local st = api.engine.getComponent(station, CT.STATION) as Station
-	if st ~= nil and st.terminals ~= nil and st.terminals[1] ~= nil and st.terminals[1].vehicleNodeId ~= nil then
-		local entity = st.terminals[1].vehicleNodeId.entity
+	local stationComp = api.engine.getComponent(station, CT.STATION) as Station
+	if stationComp ~= nil and stationComp.terminals ~= nil and stationComp.terminals[1] ~= nil and stationComp.terminals[1].vehicleNodeId ~= nil then
+		local entity = stationComp.terminals[1].vehicleNodeId.entity
 		local edge = api.engine.getComponent(entity, CT.BASE_EDGE) as Engine.Component.BaseEdge
 		if edge ~= nil and edge.position0 ~= nil and edge.position1 ~= nil then
 			return {
@@ -121,41 +121,41 @@ local function stationPositionUnsafe(sg : Engine.Entity) : Pos
 		local pos = edge ~= nil and edge.node0 ~= nil and nodePos(edge.node0) or nodePos(entity)
 		if pos ~= nil then return pos end
 	end
-	luaUtils.debug("no position for station group " .. tostring(sg) .. " (station " .. tostring(station) .. ")")
+	luaUtils.debug("no position for station group " .. tostring(stationGroup) .. " (station " .. tostring(station) .. ")")
 	return nil
 end
 
 local function fillDistances(legs : {MlsLeg}, stops : {Engine.Entity})
-	local n = #stops
-	if n < 2 then return end
+	local stopCount = #stops
+	if stopCount < 2 then return end
 	-- Each station group is read once per call (no module state).
 	local cache : {Engine.Entity : Pos} = {}
 	local missing : {Engine.Entity : boolean} = {}
-	local function posOf(sg : Engine.Entity) : Pos
-		if cache[sg] ~= nil then return cache[sg] end
-		if missing[sg] then return nil end
-		local ok, p = pcall(stationPositionUnsafe, sg)
-		if ok and p ~= nil then
-			cache[sg] = p as Pos
-			return cache[sg]
+	local function posOf(stationGroup : Engine.Entity) : Pos
+		if cache[stationGroup] ~= nil then return cache[stationGroup] end
+		if missing[stationGroup] then return nil end
+		local ok, position = pcall(stationPositionUnsafe, stationGroup)
+		if ok and position ~= nil then
+			cache[stationGroup] = position as Pos
+			return cache[stationGroup]
 		end
-		if not ok then luaUtils.log("station position failed for " .. tostring(sg) .. ": " .. tostring(p)) end
-		missing[sg] = true
+		if not ok then luaUtils.log("station position failed for " .. tostring(stationGroup) .. ": " .. tostring(position)) end
+		missing[stationGroup] = true
 		return nil
 	end
-	for i = 1, n do
-		local a = posOf(stops[i])
-		local b = posOf(stops[(i % n) + 1])
-		if legs[i] ~= nil and a ~= nil and b ~= nil then
-			local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z
+	for i = 1, stopCount do
+		local fromPos = posOf(stops[i])
+		local toPos = posOf(stops[(i % stopCount) + 1])
+		if legs[i] ~= nil and fromPos ~= nil and toPos ~= nil then
+			local dx, dy, dz = fromPos.x - toPos.x, fromPos.y - toPos.y, fromPos.z - toPos.z
 			legs[i].distance = math.sqrt(dx * dx + dy * dy + dz * dz)
 		end
 	end
 end
 
-local M : MlsJourneyHelper = {
+local exports : MlsJourneyHelper = {
 	getLegs = getLegs,
 	sumLegs = sumLegs,
 	fillDistances = fillDistances,
 }
-return M
+return exports

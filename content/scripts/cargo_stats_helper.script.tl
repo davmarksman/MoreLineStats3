@@ -35,8 +35,8 @@ local function paxId() : CargoTypeId
 	return paxIdCache
 end
 
-local function round(x : number) : integer
-	return math.floor((x or 0) + 0.5) as integer
+local function round(value : number) : integer
+	return math.floor((value or 0) + 0.5) as integer
 end
 
 local function emptyStats(lineId : Engine.Entity, kind : string) : MlsCargoStats
@@ -88,19 +88,19 @@ local function carried(lineId : Engine.Entity) : {integer : integer}, {integer :
 	-- Declared as a map, but it is a 1-based list indexed by cargo id + 1.
 	local usages = api.engine.util.line.getLineCapacityUsages(lineId, false) as {UtilLine.LineCapacityUsage}
 	if usages ~= nil then
-		for i, u in ipairs(usages) do
+		for i, usage in ipairs(usages) do
 			local id = i - 1
-			if id ~= paxId() and u ~= nil and (u.capacity or 0) > 0 then
-				caps[id] = round(u.capacity)
-				used[id] = round(u.used)
+			if id ~= paxId() and usage ~= nil and (usage.capacity or 0) > 0 then
+				caps[id] = round(usage.capacity)
+				used[id] = round(usage.used)
 				any = true
 			end
 		end
 	end
 	if not any then
-		for _, v in ipairs(api.engine.system.transportVehicleSystem.getLineVehicles(lineId)) do
-			local tv = api.engine.getComponent(v, CT.TRANSPORT_VEHICLE) as Engine.Component.TransportVehicle
-			local vcaps = tv ~= nil and tv.config ~= nil and tv.config.capacities or nil
+		for _, vehicleId in ipairs(api.engine.system.transportVehicleSystem.getLineVehicles(lineId)) do
+			local transportVehicle = api.engine.getComponent(vehicleId, CT.TRANSPORT_VEHICLE) as Engine.Component.TransportVehicle
+			local vcaps = transportVehicle ~= nil and transportVehicle.config ~= nil and transportVehicle.config.capacities or nil
 			if vcaps ~= nil then
 				for i, cap in ipairs(vcaps) do
 					local id = i - 1
@@ -119,9 +119,9 @@ end
 local function sortedIds(caps : {integer : integer}) : {integer}
 	local ids : {integer} = {}
 	for id, _ in pairs(caps) do ids[#ids + 1] = id end
-	table.sort(ids, function(a : integer, b : integer) : boolean
-		if caps[a] ~= caps[b] then return caps[a] > caps[b] end
-		return a < b
+	table.sort(ids, function(idA : integer, idB : integer) : boolean
+		if caps[idA] ~= caps[idB] then return caps[idA] > caps[idB] end
+		return idA < idB
 	end)
 	return ids
 end
@@ -129,14 +129,14 @@ end
 -- Leg times: the same for every type of a line, but the engine returns nil
 -- for a type the line doesn't carry. Try the carried ids, then passengers
 -- (a mixed line); the first with any data wins. All nil leaves "?" legs.
-local function readLegs(lineId : Engine.Entity, n : integer, ids : {integer}) : {MlsLeg}, number
+local function readLegs(lineId : Engine.Entity, stopCount : integer, ids : {integer}) : {MlsLeg}, number
 	local candidates : {CargoTypeId} = {}
 	for _, id in ipairs(ids) do candidates[#candidates + 1] = id as CargoTypeId end
 	candidates[#candidates + 1] = paxId()
 	local legs : {MlsLeg} = {}
 	local frequency : number = 0
 	for _, id in ipairs(candidates) do
-		legs, frequency = journeyHelper.getLegs(lineId, n, id)
+		legs, frequency = journeyHelper.getLegs(lineId, stopCount, id)
 		if frequency > 0 then return legs, frequency end
 		for _, leg in ipairs(legs) do
 			if leg.time > 0 then return legs, frequency end
@@ -148,14 +148,14 @@ end
 -- Per stop, the cargo types it is configured to load (stopConfig.load,
 -- index = cargo id + 1), passengers left out. A type the line has no
 -- capacity for is listed with capacity 0 (the window says so in the tooltip).
-local function readStopLoads(lineId : Engine.Entity, n : integer, caps : {integer : integer}, used : {integer : integer},
+local function readStopLoads(lineId : Engine.Entity, stopCount : integer, caps : {integer : integer}, used : {integer : integer},
 		names : {integer : string}, icons : {integer : string}) : {{MlsCargoType}}
 	local loads : {{MlsCargoType}} = {}
-	for i = 1, n do loads[i] = {} end
+	for i = 1, stopCount do loads[i] = {} end
 	local line = api.engine.getComponent(lineId, CT.LINE) as Engine.Component.Line
 	if line == nil or line.stops == nil then return loads end
 	for i, stop in ipairs(line.stops) do
-		if i > n then break end
+		if i > stopCount then break end
 		local cfg = stop.stopConfig
 		local flags = cfg ~= nil and cfg.load or nil
 		if flags ~= nil then
@@ -187,7 +187,7 @@ local function collectUnsafe(lineId : Engine.Entity) : MlsCargoStats
 	stats.name = api.engine.util.getEntityName(lineId) or "?"
 	stats.stops, stats.stopNames = lineStatsHelper.readStops(lineId)
 	stats.numVehicles = lineStatsHelper.vehicleCount(lineId)
-	local n = #stats.stops
+	local stopCount = #stats.stops
 	if stats.numVehicles == 0 then
 		stats.kind = "empty"
 		return stats
@@ -206,8 +206,8 @@ local function collectUnsafe(lineId : Engine.Entity) : MlsCargoStats
 	local cargoUtil = api.engine.util.cargo
 	for _, id in ipairs(ids) do
 		names[id], icons[id] = typeNameAndIcon(id)
-		local q = cargoUtil.getCargoQualityDataForLine(lineId, id as CargoTypeId)
-		local bad = q ~= nil and (q.countBad or 0) or 0
+		local quality = cargoUtil.getCargoQualityDataForLine(lineId, id as CargoTypeId)
+		local bad = quality ~= nil and (quality.countBad or 0) or 0
 		stats.types[#stats.types + 1] = {
 			id = id,
 			name = names[id],
@@ -221,52 +221,52 @@ local function collectUnsafe(lineId : Engine.Entity) : MlsCargoStats
 		stats.unhappy = stats.unhappy + bad
 	end
 
-	stats.legs, stats.frequency = readLegs(lineId, n, ids)
+	stats.legs, stats.frequency = readLegs(lineId, stopCount, ids)
 	journeyHelper.fillDistances(stats.legs, stats.stops)
 	stats.journey = journeyHelper.sumLegs(stats.legs)
 	-- The game's own line rate (the line window's "Rate").
 	stats.rate = api.engine.util.line.calcLineStationThroughput(lineId) or 0
 
-	stats.stopLoads = readStopLoads(lineId, n, caps, used, names, icons)
+	stats.stopLoads = readStopLoads(lineId, stopCount, caps, used, names, icons)
 
 	-- Vehicles: cargo load and capacity over all carried types. The per-type
 	-- counts are kept per vehicle for the per-leg breakdown below.
 	local atVehicle = api.engine.system.simEntityAtVehicleSystem
 	local perVehicle : {Engine.Entity : {integer : integer}} = {}
-	local function cargoLoadOf(v : Engine.Entity, tv : Engine.Component.TransportVehicle) : integer, integer
-		local vcaps = tv.config ~= nil and tv.config.capacities or nil
+	local function cargoLoadOf(vehicleId : Engine.Entity, transportVehicle : Engine.Component.TransportVehicle) : integer, integer
+		local vcaps = transportVehicle.config ~= nil and transportVehicle.config.capacities or nil
 		local byType : {integer : integer} = {}
 		local onBoard, capacity = 0, 0
 		for _, id in ipairs(ids) do
-			local count = atVehicle.getVehicleSimEntitiesCountForCargoType(v, id as CargoTypeId) or 0
+			local count = atVehicle.getVehicleSimEntitiesCountForCargoType(vehicleId, id as CargoTypeId) or 0
 			if count > 0 then byType[id] = count end
 			onBoard = onBoard + count
 			capacity = capacity + (vcaps ~= nil and (vcaps[id + 1] or 0) or 0)
 		end
-		perVehicle[v] = byType
+		perVehicle[vehicleId] = byType
 		return onBoard, capacity
 	end
-	local r = lineStatsHelper.readVehicles(lineId, n, cargoLoadOf)
-	stats.vehicles = r.vehicles
-	stats.legVehicles = r.legVehicles
-	stats.legAtStation = r.legAtStation
-	stats.legVehicleNames = r.legVehicleNames
-	stats.carrier = r.carrier
+	local vehicleLegs = lineStatsHelper.readVehicles(lineId, stopCount, cargoLoadOf)
+	stats.vehicles = vehicleLegs.vehicles
+	stats.legVehicles = vehicleLegs.legVehicles
+	stats.legAtStation = vehicleLegs.legAtStation
+	stats.legVehicleNames = vehicleLegs.legVehicleNames
+	stats.carrier = vehicleLegs.carrier
 
 	-- Cargo on each leg: the loads of the vehicles on it, all types and per type.
 	local legByType : {{integer : integer}} = {}
-	for i = 1, n do
+	for i = 1, stopCount do
 		stats.legLoad[i] = 0
 		stats.legLoadByType[i] = ""
 		legByType[i] = {}
 	end
-	for _, v in ipairs(stats.vehicles) do
-		stats.legLoad[v.leg] = stats.legLoad[v.leg] + v.load
-		for id, count in pairs(perVehicle[v.id] or {}) do
-			legByType[v.leg][id] = (legByType[v.leg][id] or 0) + count
+	for _, vehicle in ipairs(stats.vehicles) do
+		stats.legLoad[vehicle.leg] = stats.legLoad[vehicle.leg] + vehicle.load
+		for id, count in pairs(perVehicle[vehicle.id] or {}) do
+			legByType[vehicle.leg][id] = (legByType[vehicle.leg][id] or 0) + count
 		end
 	end
-	for i = 1, n do
+	for i = 1, stopCount do
 		local parts : {string} = {}
 		for _, id in ipairs(ids) do
 			local count = legByType[i][id]
@@ -287,7 +287,7 @@ local function collect(lineId : Engine.Entity) : MlsCargoStats
 	return stats
 end
 
-local M : MlsCargoStatsHelper = {
+local exports : MlsCargoStatsHelper = {
 	collect = collect,
 }
-return M
+return exports

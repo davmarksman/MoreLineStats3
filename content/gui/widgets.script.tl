@@ -62,9 +62,9 @@ local function locate(entity : Engine.Entity)
 	end
 end
 
-local function locateButton(entity : Engine.Entity, name : string) : TreeNodeId
+local function locateButton(entity : Engine.Entity) : TreeNodeId
 	return builtin.Button{
-		meta = { class = "mls-locate", tooltip = "Locate " .. name },
+		meta = { class = "mls-locate", tooltip = "Locate" },
 		content = builtin.ImageView{
 			meta = { class = "mls-pin-icon" },
 			path = ICON_LOCATE,
@@ -75,19 +75,19 @@ local function locateButton(entity : Engine.Entity, name : string) : TreeNodeId
 end
 
 -- Stop number and locate pin as one button, so they share a column.
-local function stopLocateButton(index : integer, stationGroup : Engine.Entity, name : string) : TreeNodeId
+local function stopLocateButton(index : integer, stationGroup : Engine.Entity) : TreeNodeId
 	return button_react_util.makeIconTextButton(
 		"mls-stop-locate",
 		ICON_LOCATE,
 		tostring(index),
 		function() locate(stationGroup) end,
-		"Locate " .. name)
+		"Locate")
 end
 
 -- "<pin> To Alford Station", with an optional node pushed to the right end.
 local function locateHeading(stationGroup : Engine.Entity, label : string, class : string, tooltip : string, trailing? : TreeNodeId) : TreeNodeId
 	local children : {TreeNodeId} = {
-		locateButton(stationGroup, label),
+		locateButton(stationGroup),
 		text(label, class, tooltip),
 	}
 	if trailing ~= nil then
@@ -131,8 +131,8 @@ end
 
 -- One of the base game's icon-and-label cells (the Basics card look).
 local function iconCell(path : string, value : string, tooltip : string) : TreeNodeId
-	local p : any = { iconPath = path, label = value, tooltip = tooltip }
-	return gui_react_util.IconLabelIndicator(p as GuiReactUtil.IconLabelIndicatorParams)
+	local params : any = { iconPath = path, label = value, tooltip = tooltip }
+	return gui_react_util.IconLabelIndicator(params as GuiReactUtil.IconLabelIndicatorParams)
 end
 
 -- The Vehicles cell of a stop row, one icon: the station icon when every
@@ -160,10 +160,10 @@ local function vehiclesCell(count : integer, atStation : integer, kind : string)
 	return icon(path, tooltip)
 end
 
--- The kind of the one vehicle on leg i (only meaningful when there is one).
+-- The kind of the one vehicle on the given leg (only meaningful when there is one).
 local function kindOnLeg(vehicles : {MlsVehicle}, leg : integer) : string
-	for _, v in ipairs(vehicles) do
-		if v.leg == leg then return v.kind end
+	for _, vehicle in ipairs(vehicles) do
+		if vehicle.leg == leg then return vehicle.kind end
 	end
 	return "other"
 end
@@ -188,14 +188,12 @@ local function windowBody(class : string, children : {TreeNodeId}) : TreeNodeId
 	}
 end
 
-local M : MlsWidgets = {
+local exports : MlsWidgets = {
 	ICON_VEHICLES = ICON_VEHICLES,
-	ICON_AT_STATION = ICON_AT_STATION,
 	text = text,
 	tableRow = tableRow,
 	icon = icon,
 	iconCell = iconCell,
-	locate = locate,
 	locateButton = locateButton,
 	stopLocateButton = stopLocateButton,
 	locateHeading = locateHeading,
@@ -206,4 +204,4 @@ local M : MlsWidgets = {
 	whereIcon = whereIcon,
 	windowBody = windowBody,
 }
-return M
+return exports

@@ -1,10 +1,9 @@
 -- More Line Stats: the Cargo Details windows (the cargo counterpart of
 -- line_gui's Line Details; the TF2 mod had cargoLineGui.lua in the same
--- role). Opened by the Cargo Stats button on the line-window card (in
--- line_gui) and later from the all-lines window. One window per line,
--- keyed by line id. Master-detail: summary and stop list on the left; on
--- the right the vehicles on the selected section and the cargo types the
--- line carries.
+-- role). Opened by the Cargo button on the line-window card (in line_gui).
+-- One window per line, keyed by line id. Master-detail: summary and stop
+-- list on the left; on the right the cargo types the line carries and the
+-- vehicles on the selected section.
 --
 -- This module never requires line_gui (line_gui requires it), so there is
 -- no cycle. No engine reads happen in recipe bodies: all data comes from
@@ -26,11 +25,11 @@ local WIDGETS : string = "bottle_more_line_stats::/gui/widgets.script.tl"
 local cargoStatsHelper = require(CARGO_STATS_HELPER) as MlsCargoStatsHelper
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 local fmt = require(FORMATTING) as MlsFormatting
-local w = require(WIDGETS) as MlsWidgets
+local widgets = require(WIDGETS) as MlsWidgets
 
-local text, tableRow, icon, iconCell = w.text, w.tableRow, w.icon, w.iconCell
-local locateButton, stopLocateButton = w.locateButton, w.stopLocateButton
-local styledColumn, sectionTitle, vehiclesCell = w.styledColumn, w.sectionTitle, w.vehiclesCell
+local text, tableRow, icon, iconCell = widgets.text, widgets.tableRow, widgets.icon, widgets.iconCell
+local locateButton, stopLocateButton = widgets.locateButton, widgets.stopLocateButton
+local styledColumn, sectionTitle, vehiclesCell = widgets.styledColumn, widgets.sectionTitle, widgets.vehiclesCell
 local legTimeStr, legTooltip, distanceStr, speedStr, journeyTooltip =
 	fmt.legTimeStr, fmt.legTooltip, fmt.distanceStr, fmt.speedStr, fmt.journeyTooltip
 
@@ -47,7 +46,7 @@ local TYPE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 2 }
 local SUMMARY_COLUMN_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2 }
 
 -- At most this many icons in a Loads cell; the rest is "+n" (all names in
--- the tooltip). Two 24 px icons plus "+n" fit the column's ~88 px.
+-- the tooltip). Two 20 px icons plus "+n" fit the column's ~88 px.
 local MAX_LOAD_ICONS : integer = 2
 
 -- Base-game icons. The game resolves the "@2x" files itself.
@@ -98,16 +97,16 @@ end
 
 -- A cargo type's icon path, with a stand-in when the type has none (a load
 -- flag for an id the cargo rep doesn't know, or a failed rep read).
-local function iconPathOf(t : MlsCargoType) : string
-	if t == nil or t.icon == nil or t.icon == "" then return ICON_CARGO end
-	return t.icon
+local function iconPathOf(cargoType : MlsCargoType) : string
+	if cargoType == nil or cargoType.icon == nil or cargoType.icon == "" then return ICON_CARGO end
+	return cargoType.icon
 end
 
 -- A cargo type's icon at 20 px, no right gravity (several sit side by side).
-local function cargoIcon(t : MlsCargoType, tooltip : string) : TreeNodeId
+local function cargoIcon(cargoType : MlsCargoType, tooltip : string) : TreeNodeId
 	return builtin.ImageView{
 		meta = { class = "mls-cargo-icon", tooltip = tooltip },
-		path = iconPathOf(t),
+		path = iconPathOf(cargoType),
 		scaling = builtin.type.ImageViewScaling.AutoFit,
 	}
 end
@@ -122,11 +121,6 @@ local function messageFor(stats : MlsCargoStats) : string
 	return nil
 end
 
--- "n units" for tooltips.
-local function units(n : integer) : string
-	return tostring(n) .. (n == 1 and " unit" or " units")
-end
-
 ------------------------------------------------------------
 -- STOP LIST (left)
 ------------------------------------------------------------
@@ -134,22 +128,22 @@ end
 -- The Loads cell: the icons of the types this stop is configured to load,
 -- up to MAX_LOAD_ICONS, then "+n". A type no vehicle of the line carries is
 -- still shown and called out in the tooltip. A dash when nothing is loaded.
-local function loadsCell(loads : {MlsCargoType}, stopName : string) : TreeNodeId
+local function loadsCell(loads : {MlsCargoType}) : TreeNodeId
 	if #loads == 0 then
-		return text("-", "font-scale-body, mls-time", "No cargo is loaded at " .. stopName .. ".")
+		return text("-", "font-scale-body, mls-time", "No cargo is loaded at this stop.")
 	end
 	local names : {string} = {}
-	for _, t in ipairs(loads) do
-		names[#names + 1] = t.name .. (t.capacity > 0 and "" or " (no vehicle of this line carries it)")
+	for _, cargoType in ipairs(loads) do
+		names[#names + 1] = cargoType.name .. (cargoType.capacity > 0 and "" or " (no vehicle of this line carries it)")
 	end
-	local tooltip = "Loaded at " .. stopName .. ":\n" .. table.concat(names, "\n")
+	local tooltip = "Loaded here:\n" .. table.concat(names, "\n")
 	local children : {TreeNodeId} = {}
-	for i, t in ipairs(loads) do
+	for i, cargoType in ipairs(loads) do
 		if i > MAX_LOAD_ICONS then
 			children[#children + 1] = text("+" .. tostring(#loads - MAX_LOAD_ICONS), "font-scale-body", tooltip)
 			break
 		end
-		children[#children + 1] = cargoIcon(t, tooltip)
+		children[#children + 1] = cargoIcon(cargoType, tooltip)
 	end
 	return builtin.Component{
 		meta = { class = "mls-cargo-loads", tooltip = tooltip },
@@ -169,30 +163,28 @@ local function stopList(stats : MlsCargoStats, selected : integer, onSelect : fu
 	for i = 1, count do
 		local leg = stats.legs[i] or { time = 0, drive = 0, estimated = false, distance = 0 }
 		local name = stats.stopNames[i] or "?"
-		local nextName = stats.stopNames[(i % count) + 1] or "?"
 		local onLeg = stats.legLoad[i] or 0
 		local vehicles = stats.legVehicles[i] or 0
 		local atStation = stats.legAtStation[i] or 0
-		local kind = w.kindOnLeg(stats.vehicles, i)
+		local kind = widgets.kindOnLeg(stats.vehicles, i)
 
 		local busiest = onLeg > 0 and onLeg == maxLoad
-		local loadTip = units(onLeg) .. " of cargo on the vehicles between " .. name .. " and " .. nextName
-			.. " now (vehicles loading at " .. name .. " included)."
+		local loadTip = "Cargo on the vehicles from this stop to the next one (vehicles loading here included)."
 		if stats.legLoadByType[i] ~= nil and stats.legLoadByType[i] ~= "" then
 			loadTip = loadTip .. "\n" .. stats.legLoadByType[i]
 		end
 		if busiest then loadTip = loadTip .. "\nThe fullest section of this line." end
 
 		local distanceTip = leg.distance > 0
-			and ("Distance from " .. name .. " to " .. nextName .. " as the crow flies: " .. distanceStr(leg.distance) .. ".")
+			and "Distance to the next stop as the crow flies."
 			or "No position known for one of the two stations."
-		local speedTip = "Average speed from " .. name .. " to " .. nextName .. ": the crow-flies distance over "
+		local speedTip = "Crow-flies distance over "
 			.. (leg.drive > 0 and "the driving time (time at stations left out)." or "the whole leg time (no driving time known).")
 
 		rows[i] = stopRow({
-			stopLocateButton(i, stats.stops[i], name),
+			stopLocateButton(i, stats.stops[i]),
 			text(name, "font-scale-body"),
-			loadsCell(stats.stopLoads[i] or {}, name),
+			loadsCell(stats.stopLoads[i] or {}),
 			text(tostring(onLeg), busiest and "font-scale-body, mls-time, mls-busiest" or "font-scale-body, mls-time", loadTip),
 			vehiclesCell(vehicles, atStation, kind),
 			text(distanceStr(leg.distance), "font-scale-body, mls-time", distanceTip),
@@ -219,8 +211,8 @@ end
 local function summaryBlock(stats : MlsCargoStats, lineWindow : TreeNodeId, toggle : TreeNodeId) : TreeNodeId
 	local frequency = stats.frequency > 0 and luaUtils.getTimeStr(stats.frequency) or "?"
 	local perType : {string} = {}
-	for _, t in ipairs(stats.types) do
-		perType[#perType + 1] = t.name .. ": " .. tostring(t.onBoard) .. "/" .. tostring(t.capacity)
+	for _, cargoType in ipairs(stats.types) do
+		perType[#perType + 1] = cargoType.name .. ": " .. tostring(cargoType.onBoard) .. "/" .. tostring(cargoType.capacity)
 	end
 	local rows : {TreeNodeId} = {
 		builtin.Component{
@@ -264,14 +256,13 @@ end
 ------------------------------------------------------------
 
 -- "<pin> <name>  12/96  <station or arrow icon>". The pin follows the vehicle.
-local function vehicleRow(v : MlsVehicle) : TreeNodeId
-	local loadTip = units(v.load) .. " of cargo on " .. v.name .. ", capacity " .. tostring(v.capacity) .. "."
+local function vehicleRow(vehicle : MlsVehicle) : TreeNodeId
 	return tableRow(VEHICLE_COLUMN_WEIGHTS, {
-		locateButton(v.id, v.name),
-		text(v.name, "font-scale-body", "Locate " .. v.name .. " with the pin."),
-		text(tostring(v.load) .. "/" .. tostring(v.capacity), "font-scale-body, mls-time", loadTip),
-		w.whereIcon(v.atStation),
-	}, "mls-competing-row")
+		locateButton(vehicle.id),
+		text(vehicle.name, "font-scale-body"),
+		text(tostring(vehicle.load) .. "/" .. tostring(vehicle.capacity), "font-scale-body, mls-time", "Cargo on board / capacity."),
+		widgets.whereIcon(vehicle.atStation),
+	}, "mls-compact-row")
 end
 
 -- The vehicles between the selected stop and the next one. Reads the same
@@ -281,8 +272,8 @@ local function vehiclesPanel(stats : MlsCargoStats, selected : integer) : TreeNo
 	local name = stats.stopNames[selected] or "?"
 	local nextName = stats.stopNames[(selected % count) + 1] or "?"
 	local rows : {TreeNodeId} = {}
-	for _, v in ipairs(stats.vehicles) do
-		if v.leg == selected then rows[#rows + 1] = vehicleRow(v) end
+	for _, vehicle in ipairs(stats.vehicles) do
+		if vehicle.leg == selected then rows[#rows + 1] = vehicleRow(vehicle) end
 	end
 	local children : {TreeNodeId} = {
 		sectionTitle("Vehicles on Section"),
@@ -310,16 +301,15 @@ end
 -- CARGO ON LINE (right, below the vehicles)
 ------------------------------------------------------------
 
-local function typeRow(t : MlsCargoType) : TreeNodeId
-	local loadTip = tostring(t.onBoard) .. " of " .. tostring(t.capacity) .. " " .. t.name .. " capacity in use on this line."
-	local unhappyTip = tostring(t.unhappy) .. " of the " .. tostring(t.onBoard) .. " " .. t.name
-		.. " on board are badly served, by the game's own measure."
+local function typeRow(cargoType : MlsCargoType) : TreeNodeId
+	local loadTip = "On board / capacity for this type."
+	local unhappyTip = "Cargo of this type on board that the game counts as badly served."
 	return tableRow(TYPE_COLUMN_WEIGHTS, {
-		cargoIcon(t, t.name),
-		text(t.name, "font-scale-body", t.name),
-		text(tostring(t.onBoard) .. "/" .. tostring(t.capacity), "font-scale-body, mls-time", loadTip),
-		text(tostring(t.unhappy), t.unhappy > 0 and "font-scale-body, mls-time, mls-unhappy" or "font-scale-body, mls-time", unhappyTip),
-	}, "mls-competing-row")
+		cargoIcon(cargoType, cargoType.name),
+		text(cargoType.name, "font-scale-body", cargoType.name),
+		text(tostring(cargoType.onBoard) .. "/" .. tostring(cargoType.capacity), "font-scale-body, mls-time", loadTip),
+		text(tostring(cargoType.unhappy), cargoType.unhappy > 0 and "font-scale-body, mls-time, mls-unhappy" or "font-scale-body, mls-time", unhappyTip),
+	}, "mls-compact-row")
 end
 
 -- One row per cargo type the line carries, largest capacity first. Top of
@@ -334,7 +324,7 @@ local function cargoTypesPanel(stats : MlsCargoStats, onHide : function()) : Tre
 			icon(ICON_UNHAPPY, "Unhappy: cargo of this type on board that the game counts as badly served."),
 		}),
 	}
-	for _, t in ipairs(stats.types) do rows[#rows + 1] = typeRow(t) end
+	for _, cargoType in ipairs(stats.types) do rows[#rows + 1] = typeRow(cargoType) end
 	return builtin.Component{
 		meta = { class = "mls-cargo-types" },
 		layout = builtin.BoxLayout{
@@ -358,10 +348,10 @@ end
 
 local CargoDetailsContent = react.RegisterRecipe(
 	"MlsCargoDetailsContent",
-	function(p : WindowParams) : TreeNodeId
-		local lineId : Engine.Entity = p.lineId
+	function(params : WindowParams) : TreeNodeId
+		local lineId : Engine.Entity = params.lineId
 
-		react.useInputAction("IA_MENU_BACK", react.iaHandler(p.onClose))
+		react.useInputAction("IA_MENU_BACK", react.iaHandler(params.onClose))
 		react.onMount(function()
 			openWindows[lineId] = true
 			luaUtils.debug("cargo window opened for line " .. tostring(lineId))
@@ -384,7 +374,7 @@ local CargoDetailsContent = react.RegisterRecipe(
 
 		local message = messageFor(stats)
 		if message ~= nil then
-			return w.windowBody("mls-details-narrow", { text(message, "font-scale-body") })
+			return widgets.windowBody("mls-details-narrow", { text(message, "font-scale-body") })
 		end
 
 		-- Clamp in case the line lost stops since the selection was made.
@@ -413,38 +403,38 @@ local CargoDetailsContent = react.RegisterRecipe(
 				text("Loads", "font-scale-annotation, mls-cargo-loads", "Loads: the cargo types this stop is set to load onto the line."),
 				icon(ICON_CARGO, "On section: cargo on the vehicles between this stop and the next one now "
 					.. "(vehicles loading at this stop included). The fullest section is highlighted."),
-				icon(w.ICON_VEHICLES, "Vehicles standing at this stop or on the way from it to the next one."),
+				icon(widgets.ICON_VEHICLES, "Vehicles standing at this stop or on the way from it to the next one."),
 				icon(ICON_DISTANCE, "Distance to the next stop as the crow flies."),
 				icon(ICON_SPEED, "Speed: average speed to the next stop, crow-flies distance over driving time where known."),
 				icon(ICON_TIME, "To next: average time from this stop to the next one, including time at stations."),
 			}),
-			stopList(stats, selected, function(i : integer)
-				if i >= 1 then selState:set(i) end
+			stopList(stats, selected, function(index : integer)
+				if index >= 1 then selState:set(index) end
 			end),
 		})
 
 		if not shown then
-			return w.windowBody("mls-details-narrow", { left })
+			return widgets.windowBody("mls-details-narrow", { left })
 		end
 
 		local right = styledColumn("mls-right", {
 			cargoTypesPanel(stats, function() showState:set(false) end),
 			vehiclesPanel(stats, selected),
 		})
-		return w.windowBody("mls-details", { left, right })
+		return widgets.windowBody("mls-details", { left, right })
 	end)
 
 local CargoDetailsWindow = react.RegisterWrapperRecipe(
 	"MlsCargoDetailsWindow",
 	builtin.Window,
-	function(p : WindowParams) : TreeNodeId
+	function(params : WindowParams) : TreeNodeId
 		local win : builtin.WindowParam = {
-			id = windowKey(p.lineId),
-			title = p.title,
-			onClose = p.onClose,
+			id = windowKey(params.lineId),
+			title = params.title,
+			onClose = params.onClose,
 			closable = true,
 			autoFocusOnBecomingVisible = true,
-			content = CargoDetailsContent(p),
+			content = CargoDetailsContent(params),
 		}
 		-- Centred by the stylesheet through this class (see line_gui).
 		(win as {string : any}).meta = { class = "mls-details-window" }
@@ -479,7 +469,7 @@ end
 
 luaUtils.debug("cargoGui loaded")
 
-local M : MlsCargoGui = {
+local exports : MlsCargoGui = {
 	openCargoDetails = openCargoDetails,
 }
-return M
+return exports
