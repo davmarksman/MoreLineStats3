@@ -195,11 +195,33 @@ function data()
 		gravity = { 0.5, 0.5 },
 	})
 	-- Opens centred on the screen (anchor and gravity, as the timetable mod
-	-- does) at a fixed size.
+	-- does) at a fixed size. 40 px taller than before the tabs, for the tab
+	-- strip (2026-10-14), so the list keeps its height.
 	add("Window#mls.lines.window", {
 		anchorPoint = { 0.5, 0.5 },
 		gravity = { 0.5, 0.5 },
-		size = { 1160, 790 },
+		size = { 1160, 830 },
+	})
+	-- The Passengers / Cargo tab strip is a header only: its tabs have empty
+	-- items, and their content box is hidden as in the game's vehicle store
+	-- (vehicle_store.css.lua, "R::TopBar TabWidget::Content").
+	add("R::MlsLinesWindowContent TabWidget!mls-lines-tabs", {
+		margin = { 0, 0, 6, 0 },
+	})
+	add("R::MlsLinesWindowContent TabWidget!mls-lines-tabs TabWidget::Content", {
+		visibility = "none",
+	})
+	-- Cargo tab: the type icons in the Cargo column (the same classes as the
+	-- Loads cell of Cargo Details; selectors are per window recipe).
+	add("R::MlsLinesWindowContent !mls-cargo-icon", {
+		size = { 20, 20 },
+		minSize = { 20, 20 },
+		maxSize = { 20, 20 },
+		margin = { 0, 2, 0, 2 },
+	})
+	add("R::MlsLinesWindowContent !mls-cargo-loads", {
+		gravity = { 1, 0.5 },
+		margin = { 0, 0, 0, 8 },
 	})
 	-- Header cells are buttons without the button chrome (an empty file
 	-- name clears the surface and contour images, as the game's own

@@ -45,10 +45,6 @@ local TYPE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 2 }
 -- Summary: Load/capacity, Rate, Unhappy, Length, Frequency, Journey.
 local SUMMARY_COLUMN_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2 }
 
--- At most this many icons in a Loads cell; the rest is "+n" (all names in
--- the tooltip). Two 20 px icons plus "+n" fit the column's ~88 px.
-local MAX_LOAD_ICONS : integer = 2
-
 -- Base-game icons. The game resolves the "@2x" files itself.
 -- Generic cargo (the game's "mixed cargo" icon) for totals over all types,
 -- and the line window's own Rate icon.
@@ -125,33 +121,10 @@ end
 -- STOP LIST (left)
 ------------------------------------------------------------
 
--- The Loads cell: the icons of the types this stop is configured to load,
--- up to MAX_LOAD_ICONS, then "+n". A type no vehicle of the line carries is
--- still shown and called out in the tooltip. A dash when nothing is loaded.
+-- The Loads cell: the icons of the types this stop is configured to load
+-- (shared with the lines window's Cargo column).
 local function loadsCell(loads : {MlsCargoType}) : TreeNodeId
-	if #loads == 0 then
-		return text("-", "font-scale-body, mls-time", "No cargo is loaded at this stop.")
-	end
-	local names : {string} = {}
-	for _, cargoType in ipairs(loads) do
-		names[#names + 1] = cargoType.name .. (cargoType.capacity > 0 and "" or " (no vehicle of this line carries it)")
-	end
-	local tooltip = "Loaded here:\n" .. table.concat(names, "\n")
-	local children : {TreeNodeId} = {}
-	for i, cargoType in ipairs(loads) do
-		if i > MAX_LOAD_ICONS then
-			children[#children + 1] = text("+" .. tostring(#loads - MAX_LOAD_ICONS), "font-scale-body", tooltip)
-			break
-		end
-		children[#children + 1] = cargoIcon(cargoType, tooltip)
-	end
-	return builtin.Component{
-		meta = { class = "mls-cargo-loads", tooltip = tooltip },
-		layout = builtin.BoxLayout{
-			orientation = builtin.type.Orientation.Horizontal,
-			children = children,
-		},
-	}
+	return widgets.cargoTypesCell(loads, "Loaded here:", "No cargo is loaded at this stop.")
 end
 
 local function stopList(stats : MlsCargoStats, selected : integer, onSelect : function(integer)) : TreeNodeId

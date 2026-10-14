@@ -19,6 +19,12 @@ local ICON_LOCATE : string = "::/gui/line_vehicle_mgmt/icons/symbol_locate_20.tg
 local ICON_VEHICLES : string = "::/gui/entity_window/icons/relation_vehicle_train_bus.tga"
 local ICON_AT_STATION : string = "::/gui/entity_window/icons/building_stations.tga"
 local ICON_EN_ROUTE : string = "::/gui/construction/build_control/symbol_slope_0_20.tga"
+-- Generic cargo (the game's "mixed cargo" icon): stand-in for a cargo type
+-- without an icon.
+local ICON_CARGO : string = "::/cargos/icons/cargo_mixed.tga"
+-- At most this many icons in a cargo types cell; the rest is "+n" (all
+-- names in the tooltip). Two 20 px icons plus "+n" fit about 88 px.
+local MAX_CARGO_ICONS : integer = 2
 -- One icon per vehicle kind (MlsVehicle.kind), for a section with a single
 -- vehicle. Kinds not listed fall back to ICON_VEHICLES.
 local ICON_BY_KIND : {string : string} = {
@@ -188,6 +194,48 @@ local function windowBody(class : string, children : {TreeNodeId}) : TreeNodeId
 	}
 end
 
+-- A cargo type's icon at 20 px, no right gravity (several sit side by side),
+-- with a stand-in when the type has none (a load flag for an id the cargo
+-- rep doesn't know, or a failed rep read).
+local function cargoIcon(cargoType : MlsCargoType, tooltip : string) : TreeNodeId
+	local path = ICON_CARGO
+	if cargoType ~= nil and cargoType.icon ~= nil and cargoType.icon ~= "" then path = cargoType.icon end
+	return builtin.ImageView{
+		meta = { class = "mls-cargo-icon", tooltip = tooltip },
+		path = path,
+		scaling = builtin.type.ImageViewScaling.AutoFit,
+	}
+end
+
+-- Cargo type icons: up to MAX_CARGO_ICONS, then "+n". The tooltip is the
+-- heading and every name; a type no vehicle of the line carries is still
+-- shown and called out. A dash when there are none.
+local function cargoTypesCell(types : {MlsCargoType}, heading : string, emptyTooltip : string) : TreeNodeId
+	if #types == 0 then
+		return text("-", "font-scale-body, mls-time", emptyTooltip)
+	end
+	local names : {string} = {}
+	for _, cargoType in ipairs(types) do
+		names[#names + 1] = cargoType.name .. (cargoType.capacity > 0 and "" or " (no vehicle of this line carries it)")
+	end
+	local tooltip = heading .. "\n" .. table.concat(names, "\n")
+	local children : {TreeNodeId} = {}
+	for i, cargoType in ipairs(types) do
+		if i > MAX_CARGO_ICONS then
+			children[#children + 1] = text("+" .. tostring(#types - MAX_CARGO_ICONS), "font-scale-body", tooltip)
+			break
+		end
+		children[#children + 1] = cargoIcon(cargoType, tooltip)
+	end
+	return builtin.Component{
+		meta = { class = "mls-cargo-loads", tooltip = tooltip },
+		layout = builtin.BoxLayout{
+			orientation = builtin.type.Orientation.Horizontal,
+			children = children,
+		},
+	}
+end
+
 local exports : MlsWidgets = {
 	ICON_VEHICLES = ICON_VEHICLES,
 	text = text,
@@ -203,5 +251,6 @@ local exports : MlsWidgets = {
 	kindOnLeg = kindOnLeg,
 	whereIcon = whereIcon,
 	windowBody = windowBody,
+	cargoTypesCell = cargoTypesCell,
 }
 return exports
