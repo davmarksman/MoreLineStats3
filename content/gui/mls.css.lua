@@ -18,18 +18,20 @@ function data()
 	-- hidden (also the message-only body). The Component carries the
 	-- minimum width.
 	add("R::" .. recipeName .. " !mls-details", {
-		minSize = { 1120, -1 },
+		minSize = { 1160, -1 },
 		padding = { 8, 8, 8, 8 },
 	})
 	add("R::" .. recipeName .. " !mls-details-narrow", {
-		minSize = { 708, -1 },
+		minSize = { 748, -1 },
 		padding = { 8, 8, 8, 8 },
 	})
 
 	-- Left column: summary + stop list. Right column: vehicles on section and
 	-- competing lines (Line Details) or cargo on line (Cargo Details).
+	-- 720 px (was 680, 2026-10-17): the extra 40 px went to the To next
+	-- column, whose weight rose by one, so "~20:40" is no longer cropped.
 	add("R::" .. recipeName .. " !mls-left", {
-		size = { 680, -1 },
+		size = { 720, -1 },
 		margin = { 0, 12, 0, 0 },
 	})
 	-- gravity { x, y }: 0, 0 pins the right column to the top of the row

@@ -7,7 +7,7 @@
 --   2. return plain Lua tables, never engine userdata
 --   3. no writes to module-level state
 --
--- What the engine keeps for cargo (DESIGNv3 §4.8): per type, the line's
+-- What the engine keeps for cargo (verified in game, 2026-10-10): per type, the line's
 -- capacity and items on board, the vehicles' loads, the game's quality
 -- (unhappy) count, and per stop the types configured to load. There is no
 -- "waiting at a stop for this line" and no leg demand for cargo, so neither

@@ -51,7 +51,6 @@ local function emptyStats(lineId : Engine.Entity, kind : string) : MlsLineStats
 		legVehicleNames = {},
 		vehicles = {},
 		carrier = "other",
-		hasCompetition = false,
 	}
 end
 
@@ -242,32 +241,6 @@ local function lineKind(lineId : Engine.Entity, numVehicles : integer, pax : Uti
 	return "cargo"
 end
 
--- True if some other line of the player's serves at least two distinct
--- stations of this line: then at least one stop may have a competing line,
--- and the competing panel is worth showing. Deliberately no passenger
--- check: a cargo line sharing two stations gives a harmless false positive.
-local function hasCompetition(lineId : Engine.Entity, stops : {Engine.Entity}) : boolean
-	local lineSystem = api.engine.system.lineSystem
-	local playerLines : {Engine.Entity : boolean} = {}
-	for _, playerLine in ipairs(lineSystem.getLinesForPlayer(api.engine.util.getPlayer())) do playerLines[playerLine] = true end
-
-	local seen : {Engine.Entity : boolean} = {}
-	local stationsServed : {Engine.Entity : integer} = {}
-	for _, stationGroup in ipairs(stops) do
-		if not seen[stationGroup] then
-			seen[stationGroup] = true
-			for _, other in ipairs(lineSystem.getLinesForStationGroup(stationGroup)) do
-				if other ~= lineId and playerLines[other] then
-					local count = (stationsServed[other] or 0) + 1
-					if count >= 2 then return true end
-					stationsServed[other] = count
-				end
-			end
-		end
-	end
-	return false
-end
-
 local function collectUnsafe(lineId : Engine.Entity) : MlsLineStats
 	if lineId == nil or not api.engine.entityExists(lineId) then
 		return emptyStats(lineId, "missing")
@@ -294,7 +267,6 @@ local function collectUnsafe(lineId : Engine.Entity) : MlsLineStats
 		fillLegDemand(stats, lineId)
 		fillUnhappy(stats, lineId)
 		fillVehicles(stats, lineId)
-		stats.hasCompetition = hasCompetition(lineId, stats.stops)
 	end
 	return stats
 end

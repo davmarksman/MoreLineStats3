@@ -37,7 +37,8 @@ local REFRESH_SECONDS : number = 10.0
 
 -- Column weights, shared by header and rows so the columns line up.
 -- Stop list: #+pin, Stop, Loads, On section, Vehicles, Distance, Speed, To next.
-local STOP_COLUMN_WEIGHTS : {number} = { 2, 6, 3, 2, 2, 3, 3, 2 }
+-- The 720 px left column gives about 30 px per weight unit.
+local STOP_COLUMN_WEIGHTS : {number} = { 2, 6, 3, 2, 2, 3, 3, 3 }
 -- Vehicles on the selected leg: pin, name, load, where.
 local VEHICLE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 3 }
 -- Cargo on Line: icon, name, load/capacity, unhappy.

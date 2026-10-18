@@ -2,7 +2,7 @@
 -- (GUI thread). No recipes are registered here, so loading the module from
 -- several places is harmless; no engine reads except in click handlers.
 --
--- UI tree rules, each learned from a crash (DESIGNv3 §4.1):
+-- UI tree rules, each learned from a crash:
 --   * List children and TableLayout cells must be widgets or Components,
 --     never bare layouts (wrap a layout in builtin.Component{ layout = ... }).
 --   * A recipe must return a layout.

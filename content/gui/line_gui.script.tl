@@ -52,7 +52,8 @@ local REFRESH_SECONDS : number = 10.0
 
 -- Column weights, shared by header and rows so the columns line up.
 -- Stop list: #+pin, Stop, Waiting, Unhappy, Demand, Vehicles, Distance, Speed, To next.
-local STOP_COLUMN_WEIGHTS : {number} = { 2, 6, 2, 2, 2, 2, 3, 3, 2 }
+-- The 720 px left column gives about 29 px per weight unit.
+local STOP_COLUMN_WEIGHTS : {number} = { 2, 6, 2, 2, 2, 2, 3, 3, 3 }
 -- Competing lines: time, colour, line, difference.
 local COMPETING_COLUMN_WEIGHTS : {number} = { 2, 1, 5, 3 }
 -- Vehicles on the selected leg: pin, name, load, where.
@@ -406,11 +407,11 @@ local LineDetailsContent = react.RegisterRecipe(
 		-- Selected stop, 1-based; stop 1 on open unless the opener asked for
 		-- another (the station window preselects the stop at its station).
 		local selState = react.useState(params.initialStop or 1) as ReactStateT<integer>
-		-- Whether the competing-lines panel is shown. nil until the user
-		-- presses More/Less; until then it follows whether the line has any
-		-- competition at all. Hidden, the panel's recipe is not mounted, so
-		-- its timer stops and the window can be narrower.
-		local showState = react.useState(nil) as ReactStateT<boolean>
+		-- Whether the right column (vehicles and competing lines) is shown:
+		-- open by default (user's choice, 2026-10-17), More/Less toggles it.
+		-- Hidden, the panel's recipe is not mounted, so its timer stops and
+		-- the window can be narrower.
+		local showState = react.useState(true) as ReactStateT<boolean>
 
 		local message = messageFor(stats)
 		if message ~= nil then
@@ -422,9 +423,7 @@ local LineDetailsContent = react.RegisterRecipe(
 		local selected : integer = selState:old()
 		if selected == nil or selected < 1 or selected > count then selected = 1 end
 
-		local choice = showState:old()
-		local shown : boolean = stats.hasCompetition
-		if choice ~= nil then shown = choice end
+		local shown : boolean = showState:old() ~= false
 		local toggle = button_react_util.makeTextButton(
 			"primary",
 			shown and "<- Less" or "-> More",
