@@ -26,6 +26,11 @@ local function paxId() : CargoTypeId
 	return paxIdCache
 end
 
+-- Shown for the leg from a station to itself when it is served twice in a
+-- row (metres): a small, non-zero figure so the leg, its speed and the
+-- journey total read as "same place" rather than unknown.
+local REPEAT_DISTANCE : number = 50
+
 local function unknownLeg() : MlsLeg
 	return { time = 0, drive = 0, estimated = false, distance = 0 }
 end
@@ -143,12 +148,24 @@ local function fillDistances(legs : {MlsLeg}, stops : {Engine.Entity})
 		missing[stationGroup] = true
 		return nil
 	end
+	local function distanceBetween(fromStop : Engine.Entity, toStop : Engine.Entity) : number
+		local fromPos, toPos = posOf(fromStop), posOf(toStop)
+		if fromPos == nil or toPos == nil then return 0 end
+		local dx, dy, dz = fromPos.x - toPos.x, fromPos.y - toPos.y, fromPos.z - toPos.z
+		return math.sqrt(dx * dx + dy * dy + dz * dz)
+	end
 	for i = 1, stopCount do
-		local fromPos = posOf(stops[i])
-		local toPos = posOf(stops[(i % stopCount) + 1])
-		if legs[i] ~= nil and fromPos ~= nil and toPos ~= nil then
-			local dx, dy, dz = fromPos.x - toPos.x, fromPos.y - toPos.y, fromPos.z - toPos.z
-			legs[i].distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+		if legs[i] ~= nil then
+			local nextIndex = (i % stopCount) + 1
+			if stops[nextIndex] ~= stops[i] then
+				legs[i].distance = distanceBetween(stops[i], stops[nextIndex])
+			else
+				-- The same station served twice (or more) in a row: its two
+				-- positions are one point, so the plain distance would be 0 and
+				-- show as unknown. The leg to the repeat shows REPEAT_DISTANCE;
+				-- the last visit's leg carries the real distance onwards.
+				legs[i].distance = REPEAT_DISTANCE
+			end
 		end
 	end
 end

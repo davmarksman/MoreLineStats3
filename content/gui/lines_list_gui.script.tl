@@ -48,10 +48,10 @@ local TAB_PASSENGERS : string = "passengers"
 local TAB_CARGO : string = "cargo"
 
 -- Passengers tab columns: colour, line, demand, demand %, load/capacity,
--- waiting, unhappy, busiest stop, journey, length, speed, frequency. The
--- gap before the scrollbar comes from the row box being narrower than the
--- scroll area (mls.css.lua).
-local COLUMN_WEIGHTS : {number} = { 0.8, 6.85, 2.35, 2.95, 2.5, 2.4, 2.4, 2.4, 2.5, 2.5, 2.5, 2 }
+-- waiting, unhappy, busiest stop, journey, length, speed, frequency,
+-- balance. The gap before the scrollbar comes from the row box being
+-- narrower than the scroll area (mls.css.lua).
+local COLUMN_WEIGHTS : {number} = { 0.8, 6.85, 2.35, 2.95, 2.5, 2.4, 2.4, 2.4, 2.5, 2.5, 2.5, 2, 3.15 }
 
 -- Base-game icons: the waiting-passenger marker in the rows and the
 -- Unhappy column header.
@@ -113,7 +113,7 @@ local COLUMNS : {MlsColumn<MlsLineRow>} = {
 		value = function(row : MlsLineRow) : number return row.onBoard end },
 	{ key = "waiting", label = "Waiting", tooltip = "Waiting: passengers waiting for the line at all of its stops.",
 		value = function(row : MlsLineRow) : number return row.waiting end },
-	{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = "Unhappy: passengers unhappy with the line, waiting or on board, by the game's own measure.",
+	{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = "Unhappy: passengers unhappy with the line, waiting or on board.",
 		value = function(row : MlsLineRow) : number return row.unhappy end },
 	{ key = "busiest", label = "Busiest",
 		tooltip = "Busiest: passengers waiting at the line's busiest stop.",
@@ -125,6 +125,8 @@ local COLUMNS : {MlsColumn<MlsLineRow>} = {
 	{ key = "speed", label = "Speed", tooltip = "Average speed: line length over driving time.", value = speedOf },
 	{ key = "frequency", label = "Freq.", tooltip = "Frequency: time between two vehicles of the line.",
 		value = function(row : MlsLineRow) : number return row.frequency end },
+	{ key = "balance", label = "Balance", tooltip = "Balance: income less running costs over the last year, as in the line manager.",
+		value = function(row : MlsLineRow) : number return row.balance end },
 }
 
 local function lineRow(row : MlsLineRow) : TreeNodeId
@@ -142,6 +144,7 @@ local function lineRow(row : MlsLineRow) : TreeNodeId
 		num(fmt.distanceStr(row.journey.distance)),
 		num(fmt.speedStr(row.journey)),
 		num(frequency),
+		listTable.money(row.balance),
 	}, "mls-compact-row")
 end
 
@@ -365,8 +368,9 @@ local LinesButton = react.RegisterPluginRecipe(
 		return builtin.BoxLayout{
 			children = {
 				builtin.ToggleButton{
-					meta = { tooltip = "Statistics for all of your passenger and cargo lines.", class = "mls-toolbar-btn" },
-					content = text("More Line Stats", "font-scale-body"),
+					meta = { tooltip = "More Line Stats: statistics for all of your passenger and cargo lines.", class = "mls-toolbar-btn" },
+					-- Short label: the HUD mod-button area is shared with other mods (user, 2026-10-18).
+					content = text("MLS", "font-scale-body"),
 					value = (openState:old() == true) and 1 or 0,
 					onValueChange = function(value : integer)
 						if value == 1 and not windowIsOpen then

@@ -13,7 +13,26 @@ local lineStatsHelper = require(LINE_STATS_HELPER) as MlsLineStatsHelper
 local cargoStatsHelper = require(CARGO_STATS_HELPER) as MlsCargoStatsHelper
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 
-local function rowOf(stats : MlsLineStats) : MlsLineRow
+-- The last game year, for the balance: from a year before now to now, the
+-- way the game's line manager (line_react_util.LineBalance) sets it.
+local record Period
+	fromTime : integer
+	toTime : integer
+end
+
+local function lastYear() : Period
+	local gameTime = api.engine.getComponent(api.engine.util.getWorld(), api.type.ComponentType.GAME_TIME) as Engine.Component.GameTime
+	local toTime = gameTime.gameTime
+	return { fromTime = math.max(toTime - api.util.getDefaultYearDuration(), 0), toTime = toTime }
+end
+
+-- Income less running costs over the period, one engine call, the same as
+-- the Balance column of the game's line manager.
+local function balanceOf(lineId : Engine.Entity, period : Period) : integer
+	return api.engine.util.finance.calculateBalance({ lineId }, period.fromTime, period.toTime, true)
+end
+
+local function rowOf(stats : MlsLineStats, balance : integer) : MlsLineRow
 	local demand = stats.onBoard + stats.waitingTotal
 	-- The busiest stop: the most passengers waiting at any one stop.
 	local busiest = 0
@@ -38,16 +57,18 @@ local function rowOf(stats : MlsLineStats) : MlsLineRow
 		busiest = busiest,
 		journey = stats.journey,
 		frequency = stats.frequency,
+		balance = balance,
 	}
 end
 
 local function collectAllUnsafe() : MlsLinesTable
 	local linesTable : MlsLinesTable = { rows = {}, cargoLines = 0, otherLines = 0 }
 	local player = api.engine.util.getPlayer()
+	local period = lastYear()
 	for _, lineId in ipairs(api.engine.system.lineSystem.getLinesForPlayer(player)) do
 		local stats = lineStatsHelper.collect(lineId)
 		if stats.kind == "passenger" then
-			linesTable.rows[#linesTable.rows + 1] = rowOf(stats)
+			linesTable.rows[#linesTable.rows + 1] = rowOf(stats, balanceOf(lineId, period))
 		elseif stats.kind == "cargo" then
 			linesTable.cargoLines = linesTable.cargoLines + 1
 		else
@@ -66,7 +87,7 @@ local function collectAll() : MlsLinesTable
 end
 
 -- One Cargo-tab row. The types are copied without their per-stop fields.
-local function cargoRowOf(stats : MlsCargoStats) : MlsCargoLineRow
+local function cargoRowOf(stats : MlsCargoStats, balance : integer) : MlsCargoLineRow
 	local pct : integer = 0
 	if stats.capacity > 0 then
 		pct = math.floor(stats.onBoard * 100 / stats.capacity + 0.5) as integer
@@ -84,16 +105,18 @@ local function cargoRowOf(stats : MlsCargoStats) : MlsCargoLineRow
 		types = stats.types,
 		journey = stats.journey,
 		frequency = stats.frequency,
+		balance = balance,
 	}
 end
 
 local function collectCargoUnsafe() : MlsCargoLinesTable
 	local linesTable : MlsCargoLinesTable = { rows = {}, passengerLines = 0, otherLines = 0 }
 	local player = api.engine.util.getPlayer()
+	local period = lastYear()
 	for _, lineId in ipairs(api.engine.system.lineSystem.getLinesForPlayer(player)) do
 		local stats = cargoStatsHelper.collect(lineId)
 		if stats.kind == "cargo" then
-			linesTable.rows[#linesTable.rows + 1] = cargoRowOf(stats)
+			linesTable.rows[#linesTable.rows + 1] = cargoRowOf(stats, balanceOf(lineId, period))
 		elseif stats.kind == "nocargo" then
 			linesTable.passengerLines = linesTable.passengerLines + 1
 		else

@@ -48,6 +48,14 @@ local function iconNum(path : string, str : string, tooltip? : string) : TreeNod
 	}
 end
 
+-- A money amount in the game's own format and currency, green or red by its
+-- sign through the game's global "positive" / "negative" classes
+-- (default.css.lua), as the line manager's Balance column is.
+local function money(value : integer, tooltip? : string) : TreeNodeId
+	local sign = value < 0 and "negative" or "positive"
+	return text(api.util.formatMoney(value), "font-scale-body, mls-time, " .. sign, tooltip)
+end
+
 -- The colour swatch opens the game's own line window (the "selectEntity"
 -- event is what the timetable mod fires for the same purpose).
 local function colourButton(lineId : Engine.Entity) : TreeNodeId
@@ -285,6 +293,7 @@ end
 local exports : MlsListTable = {
 	num = num,
 	iconNum = iconNum,
+	money = money,
 	colourButton = colourButton,
 	lineName = lineName,
 	headerRow = headerRow,

@@ -181,6 +181,10 @@ function data()
 	add("R::MlsCardContent Button!mls-card-btn", {
 		margin = { 0, 8, 0, 0 },
 	})
+	-- The row of icon-and-number cells above the two buttons.
+	add("R::MlsCardContent !mls-card-icons", {
+		margin = { 0, 0, 8, 0 },
+	})
 
 	-- Line Details, Cargo Details and the station window open centred. No size: the window
 	-- takes the size of its content, as the game's own class-styled
@@ -198,11 +202,13 @@ function data()
 	})
 	-- Opens centred on the screen (anchor and gravity, as the timetable mod
 	-- does) at a fixed size. 40 px taller than before the tabs, for the tab
-	-- strip (2026-10-14), so the list keeps its height.
+	-- strip (2026-10-14), so the list keeps its height; 110 px wider for the
+	-- Balance column (2026-11-07): the window, body, scroll area, header and
+	-- row box all grew by it.
 	add("Window#mls.lines.window", {
 		anchorPoint = { 0.5, 0.5 },
 		gravity = { 0.5, 0.5 },
-		size = { 1160, 830 },
+		size = { 1270, 830 },
 	})
 	-- The Passengers / Cargo tab strip is a header only: its tabs have empty
 	-- items, and their content box is hidden as in the game's vehicle store
@@ -291,23 +297,23 @@ function data()
 		margin = { 0, 0, 0, 2 },
 	})
 	add("R::MlsLinesWindowContent !mls-lines", {
-		minSize = { 1140, -1 },
+		minSize = { 1250, -1 },
 		padding = { 8, 8, 8, 8 },
 	})
 	-- The header row is outside the scroll area; it has the same width as
 	-- the row box (mls-lines-scroll), so the header columns sit exactly
 	-- over the row columns.
 	add("R::MlsLinesWindowContent !mls-lines-header", {
-		size = { 1126, 30 },
-		maxSize = { 1126, 30 },
+		size = { 1236, 30 },
+		maxSize = { 1236, 30 },
 	})
 	-- The list scrolls inside a fixed box; its content needs its own width.
 	-- As wide as the body, so the scrollbar sits at the window's edge; the
-	-- rows are narrower, which leaves the gap between Freq. and the bar.
+	-- rows are narrower, which leaves the gap between Balance and the bar.
 	add("R::MlsLinesWindowContent ScrollArea!mls-lines-scrollarea", {
-		size = { 1144, 570 },
-		minSize = { 1144, 570 },
-		maxSize = { 1144, 570 },
+		size = { 1254, 570 },
+		minSize = { 1254, 570 },
+		maxSize = { 1254, 570 },
 	})
 	-- Waiting and Unhappy cells: the number, then a 16 px icon after a
 	-- small gap. The number keeps the usual 12 px gap from the previous
@@ -323,13 +329,13 @@ function data()
 		gravity = { 1, 0.5 },
 		margin = { 0, 0, 0, 4 },
 	})
-	-- Fixed, not just preferred, and narrower than the 1144 px scroll area:
+	-- Fixed, not just preferred, and narrower than the 1254 px scroll area:
 	-- the rest is the gap before the scrollbar (a spacer beside the box
 	-- takes it, so the scroll area can't stretch the rows).
 	add("R::MlsLinesWindowContent !mls-lines-scroll", {
-		size = { 1126, -1 },
-		minSize = { 1126, -1 },
-		maxSize = { 1126, -1 },
+		size = { 1236, -1 },
+		minSize = { 1236, -1 },
+		maxSize = { 1236, -1 },
 	})
 	-- Same cell styles as Line Details (selectors are per window recipe).
 	add("R::MlsLinesWindowContent !mls-time", {

@@ -23,9 +23,9 @@ local text, sectionTitle = widgets.text, widgets.sectionTitle
 local num, iconNum = listTable.num, listTable.iconNum
 
 -- Columns: colour, line, cargo types, load/capacity, load %, unhappy, rate,
--- vehicles, journey, length, speed, frequency. Same row width as the
--- Passengers tab (mls.css.lua); weights are relative.
-local COLUMN_WEIGHTS : {number} = { 0.8, 6.85, 2.6, 2.5, 2.6, 2.4, 2.2, 2, 2.5, 2.5, 2.5, 2 }
+-- vehicles, journey, length, speed, frequency, balance. Same row width as
+-- the Passengers tab (mls.css.lua); weights are relative.
+local COLUMN_WEIGHTS : {number} = { 0.8, 6.85, 2.6, 2.5, 2.6, 2.4, 2.2, 2, 2.5, 2.5, 2.5, 2, 3.15 }
 
 local ICON_UNHAPPY : string = "::/gui/main/icons/symbol_emote_sad_colored.tga"
 
@@ -72,6 +72,8 @@ local COLUMNS : {MlsColumn<MlsCargoLineRow>} = {
 	{ key = "speed", label = "Speed", tooltip = "Average speed: line length over driving time.", value = speedOf },
 	{ key = "frequency", label = "Freq.", tooltip = "Frequency: time between two vehicles of the line.",
 		value = function(row : MlsCargoLineRow) : number return row.frequency end },
+	{ key = "balance", label = "Balance", tooltip = "Balance: income less running costs over the last year, as in the line manager.",
+		value = function(row : MlsCargoLineRow) : number return row.balance end },
 }
 
 local function lineRow(row : MlsCargoLineRow) : TreeNodeId
@@ -89,6 +91,7 @@ local function lineRow(row : MlsCargoLineRow) : TreeNodeId
 		num(fmt.distanceStr(row.journey.distance)),
 		num(fmt.speedStr(row.journey)),
 		num(frequency),
+		listTable.money(row.balance),
 	}, "mls-compact-row")
 end
 

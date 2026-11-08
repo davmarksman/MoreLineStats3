@@ -1,8 +1,10 @@
 -- More Line Stats: the line-window card and the Line Details windows.
 --
--- The card (registered by line_eow.res.lua) has two buttons: Passengers
--- opens a Line Details window for its line, Cargo opens a Cargo Details
--- window (cargo_gui). Each line gets its own window, keyed by line id, so
+-- The card (registered by line_eow.res.lua) shows one row of the line's
+-- headline figures (passenger figures, or load, length, journey and speed
+-- for a cargo line) above two buttons: Passengers opens a Line Details
+-- window for its line, Cargo opens a Cargo Details window (cargo_gui).
+-- Each line gets its own window, keyed by line id, so
 -- several can be open side by side. Line Details is master-detail: the
 -- summary and stop list on the left; on the right, for the selected stop,
 -- the vehicles on the way to the next stop and the competing lines.
@@ -36,6 +38,9 @@ local widgets = require(WIDGETS) as MlsWidgets
 -- requires this module, so there is no cycle.
 local CARGO_GUI : string = "bottle_more_line_stats::/gui/cargo_gui.script.tl"
 local cargoGui = require(CARGO_GUI) as MlsCargoGui
+-- The cargo collector, for the card's row on a cargo line.
+local CARGO_STATS_HELPER : string = "bottle_more_line_stats::/scripts/cargo_stats_helper.script.tl"
+local cargoStatsHelper = require(CARGO_STATS_HELPER) as MlsCargoStatsHelper
 
 -- Widget helpers shared with the Cargo Details window (gui/widgets.script.tl).
 local text, tableRow, icon, iconCell = widgets.text, widgets.tableRow, widgets.icon, widgets.iconCell
@@ -60,6 +65,10 @@ local COMPETING_COLUMN_WEIGHTS : {number} = { 2, 1, 5, 3 }
 local VEHICLE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 3 }
 -- Summary: Demand, Load/capacity, Waiting, Unhappy, Length, Frequency, Journey.
 local SUMMARY_COLUMN_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2, 2 }
+-- Line-window card, passenger line: Demand, Waiting, Unhappy, Length,
+-- Journey, Speed. Cargo line: Load %, Length, Journey, Speed.
+local CARD_PASSENGER_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2 }
+local CARD_CARGO_WEIGHTS : {number} = { 2, 2, 2, 2 }
 
 -- Base-game icons. The game resolves the "@2x" files itself.
 local ICON_DEMAND : string = "::/gui/entity_window/icons/passengers.tga"
@@ -71,6 +80,8 @@ local ICON_SPEED : string = "::/gui/entity_window/icons/symbol_speed.tga"
 local ICON_TIME : string = "::/gui/main/icons/calendar_speed.tga"
 local ICON_FREQUENCY : string = "::/gui/entity_window/icons/symbol_stop_watch.tga"
 local ICON_VEHICLES : string = widgets.ICON_VEHICLES
+-- The game's "mixed cargo" icon, for the cargo line's load cell (as in Cargo Details).
+local ICON_CARGO : string = "::/cargos/icons/cargo_mixed.tga"
 
 local COMPETING_TITLE_TOOLTIP : string = "For each later station on this line: the other passenger lines that also go there from the selected stop, fastest first."
 local MORE_TOOLTIP : string = "Show, for the selected stop, the vehicles on the way to the next stop and the other lines that go to the same stations."
@@ -224,7 +235,7 @@ local function summaryBlock(stats : MlsLineStats, lineWindow : TreeNodeId, toggl
 			iconCell(ICON_WAITING, tostring(stats.waitingTotal),
 				"Waiting: passengers waiting for this line at all of its stops."),
 			iconCell(ICON_UNHAPPY, tostring(stats.unhappyWaitingTotal + stats.unhappyOnBoard),
-				"Unhappy: passengers unhappy with this line, by the game's own measure: "
+				"Unhappy: passengers unhappy with this line:"
 				.. tostring(stats.unhappyWaitingTotal) .. " waiting at stops, "
 				.. tostring(stats.unhappyOnBoard) .. " on board."),
 			iconCell(ICON_DISTANCE, distanceStr(stats.journey.distance),
@@ -525,13 +536,77 @@ end
 -- LINE WINDOW CARD
 ------------------------------------------------------------
 
--- Two blue "primary" buttons, always both: the card does no engine reads
--- and has no timer, so it costs nothing while line windows are open. A line
--- without passengers or without cargo gets a message in the window instead.
+-- The card's figures: the passenger collector for every line, and the
+-- cargo collector too for a cargo line (about a millisecond each). Timer
+-- thread: engine reads only, plain tables out.
+local function collectCard(lineId : Engine.Entity) : MlsCardStats
+	local passenger = lineStatsHelper.collect(lineId)
+	local cargo : MlsCargoStats = nil
+	if passenger.kind == "cargo" then
+		cargo = cargoStatsHelper.collect(lineId)
+	end
+	return { passenger = passenger, cargo = cargo }
+end
+
+-- One row of icon-and-number cells, the Line Details summary figures for
+-- a passenger line, load and journey figures for a cargo line; nil for a
+-- line with nothing to show (no vehicles, missing, not yet read).
+local function cardRow(stats : MlsCardStats) : TreeNodeId
+	if stats == nil then return nil end
+	local passenger = stats.passenger
+	if passenger.kind == "passenger" then
+		return tableRow(CARD_PASSENGER_WEIGHTS, {
+			iconCell(ICON_DEMAND, demandStr(passenger),
+				"Demand: passengers on this line now, in vehicles plus waiting at stops.\n"
+				.. "The percentage is demand as a share of the line's passenger capacity; "
+				.. "high values mean there may not be enough vehicles."),
+			iconCell(ICON_WAITING, tostring(passenger.waitingTotal),
+				"Waiting: passengers waiting for this line at all of its stops."),
+			iconCell(ICON_UNHAPPY, tostring(passenger.unhappyWaitingTotal + passenger.unhappyOnBoard),
+				"Unhappy: passengers unhappy with this line: "
+				.. tostring(passenger.unhappyWaitingTotal) .. " waiting at stops, "
+				.. tostring(passenger.unhappyOnBoard) .. " on board."),
+			iconCell(ICON_DISTANCE, distanceStr(passenger.journey.distance),
+				"Length: Line length as the crow flies. \"?\" if a station's position is unknown."),
+			iconCell(ICON_TIME, legTimeStr(passenger.journey), "Journey: " .. journeyTooltip(passenger.journey)),
+			iconCell(ICON_SPEED, speedStr(passenger.journey),
+				"Average speed: line length over driving time."),
+		}, "mls-card-icons")
+	end
+	local cargo = stats.cargo
+	if passenger.kind == "cargo" and cargo ~= nil and cargo.kind == "cargo" then
+		-- The Cargo tab's Load % figure: load as a share of capacity, rounded.
+		local loadPct : string = "?"
+		if cargo.capacity > 0 then
+			loadPct = tostring(math.floor(cargo.onBoard * 100 / cargo.capacity + 0.5)) .. "%"
+		end
+		return tableRow(CARD_CARGO_WEIGHTS, {
+			iconCell(ICON_CARGO, loadPct,
+				"Load: cargo in this line's vehicles now as a share of its cargo capacity, all types together."),
+			iconCell(ICON_DISTANCE, distanceStr(cargo.journey.distance),
+				"Length: Line length as the crow flies. \"?\" if a station's position is unknown."),
+			iconCell(ICON_TIME, legTimeStr(cargo.journey), "Journey: " .. journeyTooltip(cargo.journey)),
+			iconCell(ICON_SPEED, speedStr(cargo.journey),
+				"Average speed: line length over driving time."),
+		}, "mls-card-icons")
+	end
+	return nil
+end
+
+-- The figures row (when there is one) above two blue "primary" buttons,
+-- always both. The row's data comes from a 10 s timer, as in the windows;
+-- the first read runs at mount. A line without passengers or without cargo
+-- gets a message in the window instead.
 local MlsCardContent = react.RegisterRecipe(
 	"MlsCardContent",
 	function(params : CardParams) : TreeNodeId
-		return builtin.BoxLayout{
+		local lineId : Engine.Entity = params.lineId
+		local statsState = engine_react_util.useStepStateTimer(function() : MlsCardStats
+			return collectCard(lineId)
+		end, REFRESH_SECONDS)
+		local row = cardRow(statsState:old())
+
+		local buttons = builtin.BoxLayout{
 			orientation = builtin.type.Orientation.Horizontal,
 			children = {
 				-- A second class (comma-joined, as the game does) gives the
@@ -550,6 +625,15 @@ local MlsCardContent = react.RegisterRecipe(
 					.. "times and speeds between stops, vehicles on each section and the cargo types carried."),
 				gui_react_util.makeHorizontalSpacer(),
 			},
+		}
+		-- The row is a Component (a table row), the buttons a layout: both
+		-- are allowed as children of a BoxLayout.
+		local children : {TreeNodeId} = {}
+		if row ~= nil then children[#children + 1] = row end
+		children[#children + 1] = buttons
+		return builtin.BoxLayout{
+			orientation = builtin.type.Orientation.Vertical,
+			children = children,
 		}
 	end)
 
