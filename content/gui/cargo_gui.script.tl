@@ -110,11 +110,11 @@ end
 
 -- Shown instead of stats for lines that have none; nil for a cargo line.
 local function messageFor(stats : MlsCargoStats) : string
-	if stats == nil then return "Loading..." end
-	if stats.kind == "nocargo" then return "This line carries no cargo. Use the Passengers button for passengers." end
+	if stats == nil then return _("Loading...") end
+	if stats.kind == "nocargo" then return "This line carries no cargo." end
 	if stats.kind == "empty" then return "This line has no vehicles." end
 	if stats.kind == "missing" then return "This line no longer exists." end
-	if stats.kind == "error" then return "Could not read this line: " .. tostring(stats.error) end
+	if stats.kind == "error" then return "Could not read: " .. tostring(stats.error) end
 	return nil
 end
 
@@ -143,7 +143,7 @@ local function stopList(stats : MlsCargoStats, selected : integer, onSelect : fu
 		local kind = widgets.kindOnLeg(stats.vehicles, i)
 
 		local busiest = onLeg > 0 and onLeg == maxLoad
-		local loadTip = "Cargo on the vehicles from this stop to the next one (vehicles loading here included)."
+		local loadTip = "On section: cargo on the vehicles between this stop and the next one now (vehicles loading at this stop included)."
 		if stats.legLoadByType[i] ~= nil and stats.legLoadByType[i] ~= "" then
 			loadTip = loadTip .. "\n" .. stats.legLoadByType[i]
 		end
@@ -152,8 +152,7 @@ local function stopList(stats : MlsCargoStats, selected : integer, onSelect : fu
 		local distanceTip = leg.distance > 0
 			and "Distance to the next stop as the crow flies."
 			or "No position known for one of the two stations."
-		local speedTip = "Crow-flies distance over "
-			.. (leg.drive > 0 and "the driving time (time at stations left out)." or "the whole leg time (no driving time known).")
+		local speedTip = "Speed: average speed to the next stop, crow-flies distance over driving time where known."
 
 		rows[i] = stopRow({
 			stopLocateButton(i, stats.stops[i]),
@@ -163,7 +162,7 @@ local function stopList(stats : MlsCargoStats, selected : integer, onSelect : fu
 			vehiclesCell(vehicles, atStation, kind),
 			text(distanceStr(leg.distance), "font-scale-body, mls-time", distanceTip),
 			text(speedStr(leg), "font-scale-body, mls-time", speedTip),
-			text(legTimeStr(leg), "font-scale-body, mls-time", legTooltip(leg, i == count)),
+			text(legTimeStr(leg), "font-scale-body, mls-time", legTooltip(leg)),
 		})
 	end
 	return builtin.List{
@@ -178,11 +177,10 @@ local function stopList(stats : MlsCargoStats, selected : integer, onSelect : fu
 	}
 end
 
--- Summary above the stop list: a title row with the Open Line Window button
--- and the More/Less toggle, then one row of icon-and-label cells. Totals
--- over all types carry the generic cargo icon (a line carrying grain and
--- coal showed only the grain icon once, which misled).
-local function summaryBlock(stats : MlsCargoStats, lineWindow : TreeNodeId, toggle : TreeNodeId) : TreeNodeId
+-- Summary above the stop list: a title row with the Open Line Window and
+-- Manage Line buttons and the More/Less toggle, then one row of
+-- icon-and-label cells. Totals over all types carry the generic cargo icon
+local function summaryBlock(stats : MlsCargoStats, lineWindow : TreeNodeId, lineManager : TreeNodeId, toggle : TreeNodeId) : TreeNodeId
 	local frequency = stats.frequency > 0 and luaUtils.getTimeStr(stats.frequency) or "?"
 	local perType : {string} = {}
 	for _, cargoType in ipairs(stats.types) do
@@ -193,27 +191,26 @@ local function summaryBlock(stats : MlsCargoStats, lineWindow : TreeNodeId, togg
 			layout = builtin.BoxLayout{
 				orientation = builtin.type.Orientation.Horizontal,
 				children = {
-					text("Summary", "font-scale-body", "Figures for the whole line, refreshed every 10 seconds."),
+					text(_("Summary"), "font-scale-body", "Figures for the whole line, refreshed every 10 seconds."),
 					gui_react_util.makeHorizontalSpacer(),
 					lineWindow,
+					lineManager,
 					toggle,
 				},
 			},
 		},
 		tableRow(SUMMARY_COLUMN_WEIGHTS, {
 			iconCell(ICON_CARGO, tostring(stats.onBoard) .. "/" .. tostring(stats.capacity),
-				"Load / capacity: cargo in this line's vehicles now, and the line's cargo capacity, all types together.\n"
+				"Load / capacity: cargo in the line's vehicles now, and the line's cargo capacity, all types.\n"
 				.. table.concat(perType, "\n")),
 			iconCell(ICON_RATE, tostring(stats.rate),
-				"Rate: the game's own line rate, as shown in the line window."),
+				"Rate: the game's own line rate."),
 			iconCell(ICON_UNHAPPY, tostring(stats.unhappy),
-				"Unhappy: cargo on board that the game counts as badly served (its own measure, as in the line window)."),
+				"Delayed Deliveries: cargo on board that the game counts as delayed."),
 			iconCell(ICON_DISTANCE, distanceStr(stats.journey.distance),
-				"Length: Line length as the crow flies. \"?\" if a station's position is unknown."),
-			iconCell(ICON_FREQUENCY, frequency,
-				"Frequency: time between two vehicles of this line, as in the line window."
-				.. (stats.journey.estimated and " Includes estimated legs." or "")),
-			iconCell(ICON_TIME, legTimeStr(stats.journey), "Journey: " .. journeyTooltip(stats.journey)),
+				"Length: line length as the crow flies."),
+			iconCell(ICON_FREQUENCY, frequency, nil),
+			iconCell(ICON_TIME, legTimeStr(stats.journey), journeyTooltip(stats.journey)),
 		}, "mls-summary-icons"),
 	}
 	return builtin.Component{
@@ -234,7 +231,7 @@ local function vehicleRow(vehicle : MlsVehicle) : TreeNodeId
 	return tableRow(VEHICLE_COLUMN_WEIGHTS, {
 		locateButton(vehicle.id),
 		text(vehicle.name, "font-scale-body"),
-		text(tostring(vehicle.load) .. "/" .. tostring(vehicle.capacity), "font-scale-body, mls-time", "Cargo on board / capacity."),
+		text(tostring(vehicle.load) .. "/" .. tostring(vehicle.capacity), "font-scale-body, mls-time", "On board / capacity."),
 		widgets.whereIcon(vehicle.atStation),
 	}, "mls-compact-row")
 end
@@ -242,9 +239,6 @@ end
 -- The vehicles between the selected stop and the next one. Reads the same
 -- 10 s data as the stop list, so no timer of its own.
 local function vehiclesPanel(stats : MlsCargoStats, selected : integer) : TreeNodeId
-	local count = #stats.stops
-	local name = stats.stopNames[selected] or "?"
-	local nextName = stats.stopNames[(selected % count) + 1] or "?"
 	local rows : {TreeNodeId} = {}
 	for _, vehicle in ipairs(stats.vehicles) do
 		if vehicle.leg == selected then rows[#rows + 1] = vehicleRow(vehicle) end
@@ -253,7 +247,7 @@ local function vehiclesPanel(stats : MlsCargoStats, selected : integer) : TreeNo
 		sectionTitle("Vehicles on Section"),
 	}
 	if #rows == 0 then
-		children[2] = text("No vehicle at " .. name .. " or on the way to " .. nextName .. " right now.", "font-scale-body")
+		children[2] = text("No vehicle at this stop or on the way to the next one.", "font-scale-body")
 	else
 		children[2] = builtin.Component{
 			layout = builtin.BoxLayout{
@@ -277,7 +271,7 @@ end
 
 local function typeRow(cargoType : MlsCargoType) : TreeNodeId
 	local loadTip = "On board / capacity for this type."
-	local unhappyTip = "Cargo of this type on board that the game counts as badly served."
+	local unhappyTip = "Delayed Deliveries: cargo of this type on board that the game counts as delayed."
 	return tableRow(TYPE_COLUMN_WEIGHTS, {
 		cargoIcon(cargoType, cargoType.name),
 		text(cargoType.name, "font-scale-body", cargoType.name),
@@ -293,9 +287,10 @@ local function cargoTypesPanel(stats : MlsCargoStats, onHide : function()) : Tre
 	local rows : {TreeNodeId} = {
 		tableRow(TYPE_COLUMN_WEIGHTS, {
 			text("", "font-scale-annotation"),
-			text("Cargo", "font-scale-annotation"),
-			text("Load", "font-scale-annotation, mls-time", "On board / capacity for this type."),
-			icon(ICON_UNHAPPY, "Unhappy: cargo of this type on board that the game counts as badly served."),
+			text(_("Cargo"), "font-scale-annotation"),
+			-- The game's noun "Load" (its tables use the same context key).
+			text(pGetText("noun", "Load"), "font-scale-annotation, mls-time", "On board / capacity for this type."),
+			icon(ICON_UNHAPPY, "Delayed Deliveries: cargo of this type on board that the game counts as delayed."),
 		}),
 	}
 	for _, cargoType in ipairs(stats.types) do rows[#rows + 1] = typeRow(cargoType) end
@@ -304,7 +299,7 @@ local function cargoTypesPanel(stats : MlsCargoStats, onHide : function()) : Tre
 		layout = builtin.BoxLayout{
 			orientation = builtin.type.Orientation.Vertical,
 			children = {
-				sectionTitle("Cargo on Line", "The cargo types this line's vehicles are set up to carry, with the load of each.", hide),
+				sectionTitle("Cargo on Line", "Cargo: the types the line's vehicles carry, largest capacity first.", hide),
 				builtin.Component{
 					layout = builtin.BoxLayout{
 						orientation = builtin.type.Orientation.Vertical,
@@ -365,18 +360,24 @@ local CargoDetailsContent = react.RegisterRecipe(
 
 		-- The game's own line window, via the same UI event the timetable
 		-- mod fires; stack = true keeps this window open behind it.
-		local lineWindow = button_react_util.makeTextButton("primary", "Open Line Window",
+		local lineWindow = button_react_util.makeTextButton("primary", _("Open Line Window"),
 			function() react.fireEvent(nil, "selectEntity", { entity = lineId, stack = true }) end,
-			"Open the game's own window for this line.")
+			"Open the game's line window")
+
+		-- The line manager on this line: the event, and the label, of the
+		-- game's own line window's Manage Line button (line.tl:141-147).
+		local lineManager = button_react_util.makeTextButton("primary", _("Manage Line"),
+			function() react.fireEvent(nil, "openVehicleManager", { openWithLineEntity = lineId }) end,
+			"Open the game's line manager on this line")
 
 		local left = styledColumn("mls-left", {
-			summaryBlock(stats, lineWindow, toggle),
+			summaryBlock(stats, lineWindow, lineManager, toggle),
 			stopRow({
 				text("#", "font-scale-annotation"),
-				text("Stop", "font-scale-annotation"),
+				text(_("Stop"), "font-scale-annotation"),
 				text("Loads", "font-scale-annotation, mls-cargo-loads", "Loads: the cargo types this stop is set to load onto the line."),
-				icon(ICON_CARGO, "On section: cargo on the vehicles between this stop and the next one now "
-					.. "(vehicles loading at this stop included). The fullest section is highlighted."),
+				icon(ICON_CARGO, "On section: cargo on the vehicles between this stop and the next one now (vehicles loading at this stop included)."
+					.. "\nThe fullest section is highlighted."),
 				icon(widgets.ICON_VEHICLES, "Vehicles standing at this stop or on the way from it to the next one."),
 				icon(ICON_DISTANCE, "Distance to the next stop as the crow flies."),
 				icon(ICON_SPEED, "Speed: average speed to the next stop, crow-flies distance over driving time where known."),

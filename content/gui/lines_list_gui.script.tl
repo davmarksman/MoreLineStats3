@@ -59,15 +59,20 @@ local ICON_PASSENGERS : string = "::/cargos/passengers/passengers.tga"
 local ICON_UNHAPPY : string = "::/gui/main/icons/symbol_emote_sad_colored.tga"
 
 -- Carrier filter buttons: one per vehicle kind a passenger line can have
--- (MlsLineRow.kind), with the game's HUD icons. "all" has no icon.
-local KIND_FILTERS : {MlsKindFilter} = {
-	{ kind = "bus", iconPath = "::/gui/hud/icons/vehicle_bus.tga", tooltip = "Bus lines only" },
-	{ kind = "tram", iconPath = "::/gui/hud/icons/vehicle_tram.tga", tooltip = "Tram lines only" },
-	{ kind = "train", iconPath = "::/gui/hud/icons/vehicle_train.tga", tooltip = "Train lines only" },
-	{ kind = "ship", iconPath = "::/gui/hud/icons/vehicle_ship.tga", tooltip = "Ship lines only" },
-	{ kind = "aircraft", iconPath = "::/gui/hud/icons/vehicle_airplane.tga", tooltip = "Plane lines only" },
-	{ kind = "helicopter", iconPath = "::/gui/hud/icons/vehicle_helicopter.tga", tooltip = "Helicopter lines only" },
-}
+-- (MlsLineRow.kind), with the game's HUD icons and the game's own filter
+-- names (statistic_lines.tl: buses are road lines; it has no helicopter
+-- filter, so that text is ours). "all" has no icon. A function, not a
+-- table: the game-translated texts go through _() at use time, never at load.
+local function kindFilters() : {MlsKindFilter}
+	return {
+		{ kind = "bus", iconPath = "::/gui/hud/icons/vehicle_bus.tga", tooltip = _("Show Road Lines") },
+		{ kind = "tram", iconPath = "::/gui/hud/icons/vehicle_tram.tga", tooltip = _("Show Tram Lines") },
+		{ kind = "train", iconPath = "::/gui/hud/icons/vehicle_train.tga", tooltip = _("Show Train Lines") },
+		{ kind = "ship", iconPath = "::/gui/hud/icons/vehicle_ship.tga", tooltip = _("Show Ship Lines") },
+		{ kind = "aircraft", iconPath = "::/gui/hud/icons/vehicle_airplane.tga", tooltip = _("Show Air Lines") },
+		{ kind = "helicopter", iconPath = "::/gui/hud/icons/vehicle_helicopter.tga", tooltip = "Show Helicopter Lines" },
+	}
+end
 
 local DEFAULT_SORT : MlsSortState = { key = "name", ascending = true }
 local DEFAULT_FILTER : MlsFilterState = { kind = "all", search = "" }
@@ -101,33 +106,39 @@ local function nameOf(row : MlsLineRow) : string
 	return row.name
 end
 
--- One entry per header cell after the colour swatch, in column order.
-local COLUMNS : {MlsColumn<MlsLineRow>} = {
-	{ key = "name", label = "Name", tooltip = "Click a line to open its Line Details window." },
-	{ key = "demand", label = "Demand", tooltip = "Demand: passengers on the line now, in vehicles plus waiting at stops.",
-		value = function(row : MlsLineRow) : number return row.demand end },
-	{ key = "demandPct", label = "Demand %",
-		tooltip = "Demand as a share of the line's passenger capacity. High values mean there may not be enough vehicles.",
-		value = function(row : MlsLineRow) : number return row.demandPct end },
-	{ key = "load", label = "Load", tooltip = "Load / capacity: passengers in the line's vehicles now, and the line's passenger capacity.",
-		value = function(row : MlsLineRow) : number return row.onBoard end },
-	{ key = "waiting", label = "Waiting", tooltip = "Waiting: passengers waiting for the line at all of its stops.",
-		value = function(row : MlsLineRow) : number return row.waiting end },
-	{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = "Unhappy: passengers unhappy with the line, waiting or on board.",
-		value = function(row : MlsLineRow) : number return row.unhappy end },
-	{ key = "busiest", label = "Busiest",
-		tooltip = "Busiest: passengers waiting at the line's busiest stop.",
-		value = function(row : MlsLineRow) : number return row.busiest end },
-	{ key = "journey", label = "Journey", tooltip = "Journey: one full round trip, including time at stations. ~ means a leg is still estimated.",
-		value = function(row : MlsLineRow) : number return row.journey.time end },
-	{ key = "length", label = "Length", tooltip = "Length: line length as the crow flies.",
-		value = function(row : MlsLineRow) : number return row.journey.distance end },
-	{ key = "speed", label = "Speed", tooltip = "Average speed: line length over driving time.", value = speedOf },
-	{ key = "frequency", label = "Freq.", tooltip = "Frequency: time between two vehicles of the line.",
-		value = function(row : MlsLineRow) : number return row.frequency end },
-	{ key = "balance", label = "Balance", tooltip = "Balance: income less running costs over the last year, as in the line manager.",
-		value = function(row : MlsLineRow) : number return row.balance end },
-}
+-- One entry per header cell after the colour swatch, in column order. A
+-- function, not a table: the labels the game translates itself (its Lines
+-- statistics headers; "Load" is its context key) go through _() at use
+-- time, never at load. "Freq." stays short: the column is too narrow for
+-- the game's "Frequency".
+local function passengerColumns() : {MlsColumn<MlsLineRow>}
+	return {
+		{ key = "name", label = _("Name"), tooltip = "Open Line Details" },
+		{ key = "demand", label = _("Demand"), tooltip = "Demand: passengers on the line now, in vehicles plus waiting at stops.",
+			value = function(row : MlsLineRow) : number return row.demand end },
+		{ key = "demandPct", label = "Demand %",
+			tooltip = "Demand as a share of the line's passenger capacity. High values mean there may not be enough vehicles.",
+			value = function(row : MlsLineRow) : number return row.demandPct end },
+		{ key = "load", label = pGetText("noun", "Load"), tooltip = "Load / capacity: passengers in the line's vehicles now, and the line's passenger capacity.",
+			value = function(row : MlsLineRow) : number return row.onBoard end },
+		{ key = "waiting", label = "Waiting", tooltip = "Waiting: passengers waiting for the line at all of its stops.",
+			value = function(row : MlsLineRow) : number return row.waiting end },
+		{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = _("Unhappy Passengers"),
+			value = function(row : MlsLineRow) : number return row.unhappy end },
+		{ key = "busiest", label = "Busiest",
+			tooltip = "Busiest: passengers waiting at the line's busiest stop.",
+			value = function(row : MlsLineRow) : number return row.busiest end },
+		{ key = "journey", label = "Journey", tooltip = "Journey: one full round trip, including time at stations.\nIncludes estimated legs, marked ~.",
+			value = function(row : MlsLineRow) : number return row.journey.time end },
+		{ key = "length", label = _("Length"), tooltip = "Length: line length as the crow flies.",
+			value = function(row : MlsLineRow) : number return row.journey.distance end },
+		{ key = "speed", label = _("Speed"), tooltip = "Average speed", value = speedOf },
+		{ key = "frequency", label = "Freq.",
+			value = function(row : MlsLineRow) : number return row.frequency end },
+		{ key = "balance", label = _("Balance"),
+			value = function(row : MlsLineRow) : number return row.balance end },
+	}
+end
 
 local function lineRow(row : MlsLineRow) : TreeNodeId
 	local frequency = row.frequency > 0 and luaUtils.getTimeStr(row.frequency) or "?"
@@ -148,17 +159,16 @@ local function lineRow(row : MlsLineRow) : TreeNodeId
 	}, "mls-compact-row")
 end
 
--- The children of the Passengers tab body: title, filters, header, list,
--- spacer, footer.
+-- The children of the Passengers tab body: the title-and-filter row, header,
+-- list, spacer, footer.
 local function passengerBody(linesTable : MlsLinesTable, view : MlsListView) : {TreeNodeId}
 	local children : {TreeNodeId} = {}
 	if linesTable == nil then
-		children[1] = text("Loading...", "font-scale-body")
+		children[1] = text(_("Loading..."), "font-scale-body")
 		return children
 	end
 	if linesTable.error ~= nil then
-		children[1] = sectionTitle("Could not read the lines", nil, view.refresh)
-		children[2] = text(tostring(linesTable.error), "font-scale-body")
+		children[1] = sectionTitle("Could not read: " .. tostring(linesTable.error), nil, view.refresh)
 		return children
 	end
 
@@ -168,26 +178,32 @@ local function passengerBody(linesTable : MlsLinesTable, view : MlsListView) : {
 	for _, row in ipairs(linesTable.rows) do
 		if matches(row.name, row.kind) then shown[#shown + 1] = row end
 	end
-	local title = listTable.count(total, "passenger line", "passenger lines")
-	if #shown ~= total then title = tostring(#shown) .. " of " .. title end
-	children[1] = sectionTitle(title, "Figures as they were when the list was computed; press Refresh for current ones.", view.refresh)
+	-- "Lines: 12" or "Lines: 5 of 12": the count after the noun, so no
+	-- plural form; the tab says which kind. "Lines" is the game's word.
+	local title = _("Lines") .. ": " .. tostring(total)
+	if #shown ~= total then title = _("Lines") .. ": " .. tostring(#shown) .. " of " .. tostring(total) end
+	local titleTooltip = "Figures as they were when the list was computed; press Refresh for current ones."
 	if total == 0 then
-		children[2] = text("You have no passenger lines with vehicles.", "font-scale-body")
+		children[1] = sectionTitle(title, titleTooltip, view.refresh)
+		children[2] = text("No lines with vehicles.", "font-scale-body")
 	else
-		children[2] = listTable.filterRow(TAB_PASSENGERS, "All passenger lines", KIND_FILTERS, view.filter, view.onKind, view.onSearch)
-		children[3] = listTable.headerRow(COLUMN_WEIGHTS, COLUMNS, view.sort, view.onSort)
+		-- Title, filters, search and Refresh share one row (more room for the list).
+		local columns = passengerColumns()
+		children[1] = listTable.filterRow(TAB_PASSENGERS, title, titleTooltip, "All lines", kindFilters(),
+			view.filter, view.onKind, view.onSearch, view.refresh)
+		children[2] = listTable.headerRow(COLUMN_WEIGHTS, columns, view.sort, view.onSort)
 		local rows : {TreeNodeId} = {}
-		for _, row in ipairs(listTable.sortRows(shown, COLUMNS, view.sort, nameOf)) do
+		for _, row in ipairs(listTable.sortRows(shown, columns, view.sort, nameOf)) do
 			rows[#rows + 1] = lineRow(row)
 		end
-		children[4] = listTable.scrollList(TAB_PASSENGERS, rows, "No line matches the filter.")
+		children[3] = listTable.scrollList(TAB_PASSENGERS, rows, "No line matches the filter.")
 	end
 	-- The window has a fixed height; the spacer takes the leftover room so
 	-- the parts above pack together and the footer stays at the bottom.
 	children[#children + 1] = gui_react_util.makeVerticalSpacer()
 	local parts : {string} = {}
 	if linesTable.otherLines > 0 then
-		parts[#parts + 1] = listTable.count(linesTable.otherLines, "line", "lines") .. " without vehicles"
+		parts[#parts + 1] = tostring(linesTable.otherLines) .. " without vehicles"
 	end
 	local note = listTable.footer(parts)
 	if note ~= nil then children[#children + 1] = text(note, "font-scale-annotation") end
@@ -198,9 +214,12 @@ end
 -- WINDOW
 ------------------------------------------------------------
 
--- GUI thread only. The tab the window last showed, so it opens there again
--- (until the game is restarted).
+-- GUI thread only. The tab the window last showed, and each tab's last sort
+-- and filter, so the window opens as it was closed (for the session, until
+-- the game is restarted; nothing goes into the save).
 local lastTab : string = TAB_PASSENGERS
+local lastSort : {string : MlsSortState} = {}
+local lastFilter : {string : MlsFilterState} = {}
 
 -- One tab of the strip; the item is empty because the window draws the body.
 local function tabChild(value : string, label : string, tooltip : string) : TreeNodeId
@@ -216,17 +235,27 @@ local function tabChild(value : string, label : string, tooltip : string) : Tree
 end
 
 -- A sort and a filter state for one tab, and the view handed to its body.
-local function useListView(refresh : TreeNodeId) : MlsListView
-	local sortState = react.useState(DEFAULT_SORT) as ReactStateT<MlsSortState>
-	local filterState = react.useState(DEFAULT_FILTER) as ReactStateT<MlsFilterState>
+-- The state starts from the tab's last values and writes every change back
+-- to them, so a reopened window shows the list as it was left.
+local function useListView(tabKey : string, refresh : TreeNodeId) : MlsListView
+	local sortState = react.useState(lastSort[tabKey] or DEFAULT_SORT) as ReactStateT<MlsSortState>
+	local filterState = react.useState(lastFilter[tabKey] or DEFAULT_FILTER) as ReactStateT<MlsFilterState>
 	local sort : MlsSortState = sortState:old() or DEFAULT_SORT
 	local filter : MlsFilterState = filterState:old() or DEFAULT_FILTER
+	local function setSort(newSort : MlsSortState)
+		lastSort[tabKey] = newSort
+		sortState:set(newSort)
+	end
+	local function setFilter(newFilter : MlsFilterState)
+		lastFilter[tabKey] = newFilter
+		filterState:set(newFilter)
+	end
 	return {
 		sort = sort,
 		filter = filter,
-		onSort = function(key : string) sortState:set(listTable.nextSort(sort, key)) end,
-		onKind = function(kind : string) filterState:set({ kind = kind, search = filter.search } as MlsFilterState) end,
-		onSearch = function(search : string) filterState:set({ kind = filter.kind, search = search or "" } as MlsFilterState) end,
+		onSort = function(key : string) setSort(listTable.nextSort(sort, key)) end,
+		onKind = function(kind : string) setFilter({ kind = kind, search = filter.search } as MlsFilterState) end,
+		onSearch = function(search : string) setFilter({ kind = filter.kind, search = search or "" } as MlsFilterState) end,
 		refresh = refresh,
 	}
 end
@@ -263,14 +292,16 @@ local LinesWindowContent = react.RegisterRecipe(
 			luaUtils.debug("lines window tab " .. newTab)
 		end
 
-		local refresh = button_react_util.makeTextButton("primary", "Refresh",
+		-- Sits at the right end of the filter row (mls-refresh-btn gives it a
+		-- gap from the search box).
+		local refresh = button_react_util.makeTextButton("primary,mls-refresh-btn", _("Refresh"),
 			function() compute(tab) end,
 			"Read all lines again. The list does not refresh by itself.")
 
 		-- Both tabs' sort and filter, whichever is shown (hooks must run in
 		-- the same order on every render).
-		local passengerView = useListView(refresh)
-		local cargoView = useListView(refresh)
+		local passengerView = useListView(TAB_PASSENGERS, refresh)
+		local cargoView = useListView(TAB_CARGO, refresh)
 
 		-- Q/E (or the gamepad shoulder buttons) switch tabs, as in the
 		-- game's own tabbed windows.
@@ -286,8 +317,8 @@ local LinesWindowContent = react.RegisterRecipe(
 				value = tab,
 				onValueChange = function(newValue : string) onTab(newValue) end,
 				tabs = {
-					tabChild(TAB_PASSENGERS, "Passengers", "Lines that carry passengers, mixed lines included."),
-					tabChild(TAB_CARGO, "Cargo", "Lines that carry cargo, mixed lines included."),
+					tabChild(TAB_PASSENGERS, _("Passengers"), "Lines that carry passengers, mixed lines included."),
+					tabChild(TAB_CARGO, _("Cargo"), "Lines that carry cargo, mixed lines included."),
 				},
 			}),
 		}

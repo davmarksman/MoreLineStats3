@@ -23,9 +23,9 @@ local function splitNote(leg : MlsLeg) : string
 		.. (atStations >= 1 and luaUtils.getTimeStr(atStations) or "0:00") .. " at stations"
 end
 
-local function legTooltip(leg : MlsLeg, isLast : boolean) : string
+local function legTooltip(leg : MlsLeg) : string
 	if leg.time <= 0 then return "No time known for this leg yet." end
-	local text = "Time to the next stop" .. (isLast and " (back to stop 1)" or "") .. ", including time at stations."
+	local text = "Time to the next stop, including time at stations."
 	local split = splitNote(leg)
 	if split ~= nil then text = text .. "\n" .. split end
 	if leg.estimated then text = text .. "\n" .. ESTIMATED_NOTE end
@@ -51,7 +51,7 @@ end
 
 local function journeyTooltip(journey : MlsLeg) : string
 	if journey.time <= 0 then return "The journey time is unknown until every leg has a time." end
-	local text = "One full round trip, including time at stations."
+	local text = "Journey: one full round trip, including time at stations."
 	local split = splitNote(journey)
 	if split ~= nil then text = text .. "\n" .. split end
 	if journey.estimated then text = text .. "\nIncludes estimated legs, marked ~." end

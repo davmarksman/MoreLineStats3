@@ -70,7 +70,7 @@ end
 
 local function locateButton(entity : Engine.Entity) : TreeNodeId
 	return builtin.Button{
-		meta = { class = "mls-locate", tooltip = "Locate" },
+		meta = { class = "mls-locate", tooltip = _("Locate") },
 		content = builtin.ImageView{
 			meta = { class = "mls-pin-icon" },
 			path = ICON_LOCATE,
@@ -87,7 +87,7 @@ local function stopLocateButton(index : integer, stationGroup : Engine.Entity) :
 		ICON_LOCATE,
 		tostring(index),
 		function() locate(stationGroup) end,
-		"Locate")
+		_("Locate"))
 end
 
 -- "<pin> To Alford Station", with an optional node pushed to the right end.
@@ -147,15 +147,10 @@ end
 -- at-stop and en-route); a dash when the section is empty. The counts are
 -- in the tooltip.
 local function vehiclesCell(count : integer, atStation : integer, kind : string) : TreeNodeId
+	-- One wording for every case (no plural forms), so it is one translation key.
+	local tooltip = "Vehicles on section: " .. tostring(count) .. ", at stop: " .. tostring(atStation)
 	if count == 0 then
-		return text("-", "font-scale-body, mls-time", "No vehicles on section")
-	end
-	local tooltip : string
-	if atStation == count then
-		tooltip = tostring(count) .. (count == 1 and " vehicle" or " vehicles") .. " at stop"
-	else
-		tooltip = tostring(count) .. (count == 1 and " vehicle" or " vehicles") .. " on section"
-		if atStation > 0 then tooltip = tooltip .. " (" .. tostring(atStation) .. " at stop)" end
+		return text("-", "font-scale-body, mls-time", tooltip)
 	end
 	local path = ICON_VEHICLES
 	if atStation == count then
@@ -174,9 +169,10 @@ local function kindOnLeg(vehicles : {MlsVehicle}, leg : integer) : string
 	return "other"
 end
 
--- "At Station" / "En route" icon for a vehicle row.
+-- "At Terminal" / "En route" icon for a
+-- vehicle row.
 local function whereIcon(atStation : boolean) : TreeNodeId
-	return icon(atStation and ICON_AT_STATION or ICON_EN_ROUTE, atStation and "At Station" or "En route")
+	return icon(atStation and ICON_AT_STATION or ICON_EN_ROUTE, atStation and _("At Terminal") or "En route")
 end
 
 -- The window body: a horizontal row of columns inside a styled Component,

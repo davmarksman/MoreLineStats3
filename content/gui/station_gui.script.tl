@@ -82,12 +82,12 @@ end
 
 -- Shown instead of the list when there is nothing to list; nil otherwise.
 local function messageFor(data : MlsStationCompeting) : string
-	if data == nil then return "Loading..." end
-	if data.kind == "error" then return "Could not read the competing lines: " .. tostring(data.error) end
+	if data == nil then return _("Loading...") end
+	if data.kind == "error" then return "Could not read: " .. tostring(data.error) end
 	if data.kind == "missing" then return "This station no longer exists." end
 	if data.lineCount == 0 then return "None of your passenger lines stop here." end
 	if #data.destinations == 0 then
-		return "No destination from " .. data.name .. " is served by more than one of your lines."
+		return "No destination is served by more than one of your lines."
 	end
 	return nil
 end
@@ -97,11 +97,10 @@ end
 -- selectEntity event the colour swatches fire for lines; stack = true keeps
 -- this window open). The text class keeps the label at body size and the
 -- stylesheet adds a hover highlight so it reads as clickable.
-local function destinationRow(dest : MlsStationDestination, fromName : string) : TreeNodeId
-	local nameButton = button_react_util.makeTextButton("mls-heading-btn", "To " .. dest.name,
+local function destinationRow(dest : MlsStationDestination) : TreeNodeId
+	local nameButton = button_react_util.makeTextButton("mls-heading-btn", _("To") .. " " .. dest.name,
 		function() react.fireEvent(nil, "selectEntity", { entity = dest.stationGroup, stack = true }) end,
-		"Your lines that go from " .. fromName .. " to " .. dest.name .. ", fastest first.\n"
-		.. "Click to open the station window for " .. dest.name .. ".",
+		"Lines from here to this station, fastest first.\nClick to open the station window.",
 		false, "font-scale-body")
 	return builtin.Component{
 		meta = { class = "mls-destination" },
@@ -170,7 +169,7 @@ local StationCompetingContent = react.RegisterRecipe(
 		else
 			local rows : {TreeNodeId} = {}
 			for _, dest in ipairs(data.destinations) do
-				rows[#rows + 1] = destinationRow(dest, data.name)
+				rows[#rows + 1] = destinationRow(dest)
 				for _, line in ipairs(dest.lines) do
 					rows[#rows + 1] = competingRow(line, dest)
 				end
@@ -236,7 +235,7 @@ local function openStationCompeting(stationGroup : Engine.Entity)
 	winApi.addWindow(StationCompetingWindow, key, {
 		stationGroup = stationGroup,
 		name = name,
-		title = "From: " .. name,
+		title = _("From") .. ": " .. name,
 		onClose = function()
 			winApi.removeWindow(StationCompetingWindow, key)
 			openWindows[stationGroup] = nil

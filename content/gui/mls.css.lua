@@ -262,8 +262,21 @@ function data()
 		backgroundColor1 = { 1, 1, 1, 0.2 },
 	})
 	-- Filter row: "All" plus one toggle per vehicle kind, and the search box.
+	-- One row holds the title, the filters, the search box and Refresh
+	-- (2026-11-09; the title had its own row before, and the list grew by
+	-- that row's 30 px).
 	add("R::MlsLinesWindowContent !mls-filter-row", {
 		margin = { 0, 0, 6, 0 },
+	})
+	-- The "Lines: 12" title at the row's left end, centred on the 32 px
+	-- toggles, with a gap before the first of them.
+	add("R::MlsLinesWindowContent !mls-list-title", {
+		gravity = { 0, 0.5 },
+		margin = { 0, 12, 0, 0 },
+	})
+	-- Refresh at the right end, a gap after the search box.
+	add("R::MlsLinesWindowContent Button!mls-refresh-btn", {
+		margin = { 0, 0, 0, 8 },
 	})
 	add("R::MlsLinesWindowContent ToggleButton!mls-filter-btn", {
 		minSize = { 32, 32 },
@@ -310,10 +323,12 @@ function data()
 	-- The list scrolls inside a fixed box; its content needs its own width.
 	-- As wide as the body, so the scrollbar sits at the window's edge; the
 	-- rows are narrower, which leaves the gap between Balance and the bar.
+	-- 570 tall until 2026-11-09, then the title row merged into the filter
+	-- row and the list took its height.
 	add("R::MlsLinesWindowContent ScrollArea!mls-lines-scrollarea", {
-		size = { 1254, 570 },
-		minSize = { 1254, 570 },
-		maxSize = { 1254, 570 },
+		size = { 1254, 600 },
+		minSize = { 1254, 600 },
+		maxSize = { 1254, 600 },
 	})
 	-- Waiting and Unhappy cells: the number, then a 16 px icon after a
 	-- small gap. The number keeps the usual 12 px gap from the previous

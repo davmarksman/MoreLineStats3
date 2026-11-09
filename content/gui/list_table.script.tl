@@ -86,7 +86,9 @@ end
 -- label or icon and the sort arrow when this is the sorted column.
 -- Right-aligned like the numbers below, except the Name header.
 local function headerCell<R>(col : MlsColumn<R>, sort : MlsSortState, onSort : function(string)) : TreeNodeId
-	local tooltip = col.tooltip .. "\nClick to sort by this column; click again to reverse."
+	-- A column may have no tooltip of its own (Frequency).
+	local tooltip = (col.tooltip ~= nil and (col.tooltip .. "\n") or "")
+		.. "Click to sort by this column; click again to reverse."
 	-- The button centres its content by default; the two classes anchor it
 	-- left (Name) or right (the numbers) in the stylesheet.
 	local left = col.key == "name"
@@ -144,11 +146,15 @@ local function filterToggle(content : TreeNodeId, tooltip : string, checked : bo
 	}
 end
 
--- "All" and one button per vehicle kind, then the search box.
-local function filterRow(tabKey : string, allTooltip : string, kinds : {MlsKindFilter}, filter : MlsFilterState,
-		onKind : function(string), onSearch : function(string)) : TreeNodeId
+-- The one row above the table (since 2026-11-09, two rows before): the
+-- title ("Lines: 12"), "All" and one button per vehicle kind, then the
+-- search box and the Refresh button at the right end.
+local function filterRow(tabKey : string, title : string, titleTooltip : string, allTooltip : string,
+		kinds : {MlsKindFilter}, filter : MlsFilterState,
+		onKind : function(string), onSearch : function(string), refresh : TreeNodeId) : TreeNodeId
 	local children : {TreeNodeId} = {
-		filterToggle(text("All", "font-scale-body"), allTooltip, filter.kind == "all",
+		text(title, "font-scale-body, mls-list-title", titleTooltip),
+		filterToggle(text(_("All"), "font-scale-body"), allTooltip, filter.kind == "all",
 			function() onKind("all") end),
 	}
 	for _, kindFilter in ipairs(kinds) do
@@ -165,13 +171,14 @@ local function filterRow(tabKey : string, allTooltip : string, kinds : {MlsKindF
 	children[#children + 1] = builtin.TextInputField{
 		-- Keyed per tab: both tabs put a search box here, and without a key
 		-- the switch would reuse it with the other tab's half-typed text.
-		meta = { localKey = tabKey .. "-search", class = "mls-search", tooltip ="Show only lines whose name contains this text. Search several terms using commas, e.g. \"Line 1, Line 2\"." },
+		meta = { localKey = tabKey .. "-search", class = "mls-search", tooltip = "Show only lines whose name contains this text. Separate several terms with commas." },
 		value = filter.search,
-		placeholderText = "Search lines. Search several terms using commas, e.g. \"Line 1, Line 2\".",
+		placeholderText = "Search lines",
 		onTyping = onSearch,
 		onValueChange = onSearch,
 		acceptOnFocusLoss = true,
 	}
+	children[#children + 1] = refresh
 	return builtin.Component{
 		meta = { class = "mls-filter-row" },
 		layout = builtin.BoxLayout{
@@ -279,15 +286,11 @@ local function scrollList(tabKey : string, rowNodes : {TreeNodeId}, emptyMessage
 	}
 end
 
-local function count(value : integer, singular : string, plural : string) : string
-	return tostring(value) .. " " .. (value == 1 and singular or plural)
-end
-
--- "3 cargo-only lines and 2 lines without vehicles not shown."; nil when
--- there is nothing to say.
+-- "Not shown: 2 without vehicles."; nil when there is nothing to say. The
+-- count comes before the noun, so no plural form is needed.
 local function footer(parts : {string}) : string
 	if #parts == 0 then return nil end
-	return table.concat(parts, " and ") .. " not shown."
+	return "Not shown: " .. table.concat(parts, ", ") .. "."
 end
 
 local exports : MlsListTable = {
@@ -303,6 +306,5 @@ local exports : MlsListTable = {
 	nextSort = nextSort,
 	scrollList = scrollList,
 	footer = footer,
-	count = count,
 }
 return exports
