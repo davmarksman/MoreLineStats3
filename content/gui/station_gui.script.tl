@@ -24,6 +24,7 @@ local game_react_globals = ug_require "::/gui/main/game_react_globals.tl" as Gam
 local content_card       = ug_require "::/gui/main/content_card.tl" as ContentCard
 local station_group_eow  = ug_require "::/gui/entity_window/station_group/station_group_eow.script.tl" as StationGroupEow
 local line_react_util    = ug_require "::/gui/line_vehicle_mgmt/line_react_util.tl" as LineReactUtil
+local lang_util          = ug_require "::/scripts/lang_util.tl" as LangUtil
 
 -- Own modules go through a path constant and a cast to their record in
 -- tealdef/mls_def.d.tl, because `tl check` can't resolve "<modId>::/" paths.
@@ -37,6 +38,10 @@ local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 local fmt = require(FORMATTING) as MlsFormatting
 local widgets = require(WIDGETS) as MlsWidgets
 local lineGui = require(LINE_GUI) as MlsLineGui
+-- Where the window reopens.
+local WINDOW_POSITION : string = "bottle_more_line_stats::/gui/window_position.script.tl"
+local windowPosition = require(WINDOW_POSITION) as MlsWindowPosition
+local WINDOW_KIND : string = "stationCompeting"
 
 local text, tableRow, locateButton, sectionTitle = widgets.text, widgets.tableRow, widgets.locateButton, widgets.sectionTitle
 
@@ -45,7 +50,6 @@ local REFRESH_SECONDS : number = 10.0
 -- Competing lines: time, colour, line, difference (as in Line Details).
 local COMPETING_COLUMN_WEIGHTS : {number} = { 2, 1, 5, 3 }
 
-local TITLE_TOOLTIP : string = "For each other station that two or more of your passenger lines reach from here: those lines, fastest first, and how far behind the fastest the others are."
 
 ------------------------------------------------------------
 -- TYPES
@@ -56,6 +60,7 @@ local record WindowParams
 	name : string      -- the station's name when the window opened (heading fallback while loading)
 	title : string
 	onClose : function()
+	spot : MlsWindowSpot   -- where the window opens; nil = centred
 end
 
 local record CardParams
@@ -83,11 +88,11 @@ end
 -- Shown instead of the list when there is nothing to list; nil otherwise.
 local function messageFor(data : MlsStationCompeting) : string
 	if data == nil then return _("Loading...") end
-	if data.kind == "error" then return "Could not read: " .. tostring(data.error) end
-	if data.kind == "missing" then return "This station no longer exists." end
-	if data.lineCount == 0 then return "None of your passenger lines stop here." end
+	if data.kind == "error" then return fmt.couldNotRead(data.error) end
+	if data.kind == "missing" then return _("This station no longer exists.") end
+	if data.lineCount == 0 then return _("None of your passenger lines stop here.") end
 	if #data.destinations == 0 then
-		return "No destination is served by more than one of your lines."
+		return _("No destination is served by more than one of your lines.")
 	end
 	return nil
 end
@@ -100,7 +105,7 @@ end
 local function destinationRow(dest : MlsStationDestination) : TreeNodeId
 	local nameButton = button_react_util.makeTextButton("mls-heading-btn", _("To") .. " " .. dest.name,
 		function() react.fireEvent(nil, "selectEntity", { entity = dest.stationGroup, stack = true }) end,
-		"Lines from here to this station, fastest first.\nClick to open the station window.",
+		_("Lines from here to this station, fastest first.") .. "\n" .. _("Click to open the station window."),
 		false, "font-scale-body")
 	return builtin.Component{
 		meta = { class = "mls-destination" },
@@ -118,7 +123,7 @@ local function competingRow(line : MlsCompetingLine, dest : MlsStationDestinatio
 	local nameNode = line_react_util.NameTextView{
 		entity = line.lineId,
 		onClickOverride = function(entity : Engine.Entity) lineGui.openLineDetails(entity, stopIndex) end,
-		tooltip = "Open Line Details",
+		tooltip = _("Open Line Details"),
 		styleClass = "mls-line-name",
 	}
 	local diffClass = line.isFastest
@@ -142,6 +147,7 @@ local StationCompetingContent = react.RegisterRecipe(
 		local stationGroup : Engine.Entity = params.stationGroup
 
 		react.useInputAction("IA_MENU_BACK", react.iaHandler(params.onClose))
+		windowPosition.usePoll(WINDOW_KIND, windowKey(stationGroup), params.spot)
 		react.onMount(function()
 			openWindows[stationGroup] = true
 			luaUtils.debug("station window opened for station group " .. tostring(stationGroup))
@@ -161,7 +167,8 @@ local StationCompetingContent = react.RegisterRecipe(
 		-- one read at open while loading or when the station is gone.
 		local stationName = (data ~= nil and data.kind == "ok") and data.name or params.name
 		local children : {TreeNodeId} = {
-			sectionTitle("Competing lines from " .. stationName, TITLE_TOOLTIP),
+			sectionTitle(lang_util.format(_("Competing lines from {station}"), { station = stationName }),
+				_("For each other station that two or more of your passenger lines reach from here: those lines, fastest first, and how far behind the fastest the others are.")),
 		}
 		local message = messageFor(data)
 		if message ~= nil then
@@ -215,8 +222,8 @@ local StationCompetingWindow = react.RegisterWrapperRecipe(
 			autoFocusOnBecomingVisible = true,
 			content = StationCompetingContent(params),
 		}
-		-- Centred by the stylesheet through this class (see line_gui).
-		(win as {string : any}).meta = { class = "mls-details-window" }
+		-- Centred, or where the last one was left (window_position).
+		windowPosition.place(win, params.spot)
 		return builtin.Window(win)
 	end)
 
@@ -236,6 +243,7 @@ local function openStationCompeting(stationGroup : Engine.Entity)
 		stationGroup = stationGroup,
 		name = name,
 		title = _("From") .. ": " .. name,
+		spot = windowPosition.spotFor(WINDOW_KIND),
 		onClose = function()
 			winApi.removeWindow(StationCompetingWindow, key)
 			openWindows[stationGroup] = nil
@@ -264,9 +272,9 @@ local MlsStationCardContent = react.RegisterRecipe(
 			children = {
 				button_react_util.makeTextButton(
 					"primary",
-					"Competing Lines",
+					_("Competing Lines"),
 					function() openStationCompeting(params.stationGroup) end,
-					"Which of your passenger lines go from here to the same stations, and which gets there fastest."),
+					_("Which of your passenger lines go from here to the same stations, and which gets there fastest.")),
 				gui_react_util.makeHorizontalSpacer(),
 			},
 		}

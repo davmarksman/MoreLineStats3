@@ -58,7 +58,7 @@ function data()
 		margin = { 0, 0, 16, 0 },
 	})
 
-	-- "Vehicles on Section" / "Competing Lines" / "Cargo on Line" title rows.
+	-- "Vehicles" /"Competing Lines" / "Cargo on Line" title rows.
 	add("R::" .. recipeName .. " !mls-section-title", {
 		margin = { 0, 0, 4, 0 },
 	})
@@ -89,6 +89,19 @@ function data()
 		size = { 20, 20 },
 		minSize = { 20, 20 },
 		maxSize = { 20, 20 },
+	})
+
+	-- The Summary row's buttons (Open Line Window, Manage Line, More/Less):
+	-- a gap before each so they don't touch.
+	add("R::" .. recipeName .. " !mls-summary-btn", {
+		margin = { 0, 0, 0, 8 },
+	})
+	-- The Manage Line button's icon (the game's), before its label.
+	add("R::" .. recipeName .. " !mls-btn-icon", {
+		size = { 20, 20 },
+		minSize = { 20, 20 },
+		maxSize = { 20, 20 },
+		margin = { 0, 4, 0, 0 },
 	})
 
 	-- Locate pin buttons (headings) and the stop number + pin button.
@@ -186,10 +199,13 @@ function data()
 		margin = { 0, 0, 8, 0 },
 	})
 
-	-- Line Details, Cargo Details and the station window open centred. No size: the window
-	-- takes the size of its content, as the game's own class-styled
-	-- `Window!missing-res-window` does with the same two properties.
-	add("Window!mls-details-window", {
+	-- All four windows open centred through this class the first time in a
+	-- session; once one has been moved, the next of its kind opens there
+	-- through initialX / initialY without the class (window_position.script.tl;
+	-- a gravity here would override them). No size: a window takes the size
+	-- of its content, as the game's own class-styled `Window!missing-res-window`
+	-- does with the same two properties; the lines window's size is below.
+	add("Window!mls-centred-window", {
 		anchorPoint = { 0.5, 0.5 },
 		gravity = { 0.5, 0.5 },
 	})
@@ -200,14 +216,12 @@ function data()
 		margin = { 1, 1, 2, 1 },
 		gravity = { 0.5, 0.5 },
 	})
-	-- Opens centred on the screen (anchor and gravity, as the timetable mod
-	-- does) at a fixed size. 40 px taller than before the tabs, for the tab
+	-- A fixed size (centred by the class above, or placed where it was last
+	-- left). 40 px taller than before the tabs, for the tab
 	-- strip (2026-10-14), so the list keeps its height; 110 px wider for the
 	-- Balance column (2026-11-07): the window, body, scroll area, header and
 	-- row box all grew by it.
 	add("Window#mls.lines.window", {
-		anchorPoint = { 0.5, 0.5 },
-		gravity = { 0.5, 0.5 },
 		size = { 1270, 830 },
 	})
 	-- The Passengers / Cargo tab strip is a header only: its tabs have empty
@@ -324,11 +338,12 @@ function data()
 	-- As wide as the body, so the scrollbar sits at the window's edge; the
 	-- rows are narrower, which leaves the gap between Balance and the bar.
 	-- 570 tall until 2026-11-09, then the title row merged into the filter
-	-- row and the list took its height.
+	-- row and the list took its height; 620 since 2026-11-11, when the
+	-- "Not shown: ..." footer under the list was removed.
 	add("R::MlsLinesWindowContent ScrollArea!mls-lines-scrollarea", {
-		size = { 1254, 600 },
-		minSize = { 1254, 600 },
-		maxSize = { 1254, 600 },
+		size = { 1254, 620 },
+		minSize = { 1254, 620 },
+		maxSize = { 1254, 620 },
 	})
 	-- Waiting and Unhappy cells: the number, then a 16 px icon after a
 	-- small gap. The number keeps the usual 12 px gap from the previous

@@ -7,6 +7,7 @@
 -- Types in tealdef/mls_def.d.tl (MlsCargoLinesGui).
 
 local gui_react_util     = ug_require "::/gui/main/gui_react_util.tl" as GuiReactUtil
+local lang_util          = ug_require "::/scripts/lang_util.tl" as LangUtil
 
 local LUA_UTILS : string = "bottle_more_line_stats::/scripts/lua_utils.script.tl"
 local FORMATTING : string = "bottle_more_line_stats::/gui/formatting.script.tl"
@@ -22,10 +23,12 @@ local cargoGui = require(CARGO_GUI) as MlsCargoGui
 local text, sectionTitle = widgets.text, widgets.sectionTitle
 local num, iconNum = listTable.num, listTable.iconNum
 
--- Columns: colour, line, cargo types, load/capacity, Utilization (Load %), unhappy, rate,
--- vehicles, journey, length, speed, frequency, balance. Same row width as
--- the Passengers tab (mls.css.lua); weights are relative.
-local COLUMN_WEIGHTS : {number} = { 0.8, 6.85, 2.6, 2.5, 2.6, 2.4, 2.2, 2, 2.5, 2.5, 2.5, 2, 3.15 }
+-- Columns: colour, line, cargo types, load/capacity, Utilization (Load %),
+-- waiting, unhappy, rate, vehicles, journey, length, speed, frequency,
+-- balance. Same row width as the Passengers tab (mls.css.lua); weights are
+-- relative. Waiting (2026-11-11) took 1.2 from Name and 0.5 each from
+-- Length and Speed, so the others keep their width.
+local COLUMN_WEIGHTS : {number} = { 0.8, 5.65, 2.6, 2.5, 2.6, 2.2, 2.4, 2.2, 2, 2.5, 2, 2, 2, 3.15 }
 
 local ICON_UNHAPPY : string = "::/gui/main/icons/symbol_emote_sad_colored.tga"
 
@@ -61,25 +64,30 @@ end
 -- the game's "Frequency".
 local function cargoColumns() : {MlsColumn<MlsCargoLineRow>}
 	return {
-		{ key = "name", label = _("Name"), tooltip = "Open Cargo Details" },
-		{ key = "types", label = _("Cargo"), tooltip = "Cargo: the types the line's vehicles carry, largest capacity first.",
+		{ key = "name", label = _("Name"), tooltip = _("Open Cargo Details") },
+		{ key = "types", label = _("Cargo"), tooltip = _("Cargo: the types the line's vehicles carry, largest capacity first."),
 			value = function(row : MlsCargoLineRow) : number return #row.types end },
-		{ key = "load", label = pGetText("noun", "Load"), tooltip = "Load / capacity: cargo in the line's vehicles now, and the line's cargo capacity, all types.",
+		{ key = "load", label = pGetText("noun", "Load"), tooltip = fmt.loadCapacityTooltip(),
 			value = function(row : MlsCargoLineRow) : number return row.onBoard end },
 		{ key = "loadPct", label = _("Utilization"), tooltip = _("Utilization"),
 			value = function(row : MlsCargoLineRow) : number return row.loadPct end },
-		{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = "Delayed Deliveries: cargo on board that the game counts as delayed.",
+		{ key = "waiting", label = _("Waiting"),
+			tooltip = _("Waiting: the cargo this line loads, in the stocks of the industries and warehouses its stops reach.") .. "\n"
+				.. _("Shared with every line that reaches them."),
+			value = function(row : MlsCargoLineRow) : number return row.waiting end },
+		{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = fmt.delayedTooltip(),
 			value = function(row : MlsCargoLineRow) : number return row.unhappy end },
-		{ key = "rate", label = _("Rate"), tooltip = "Rate: the game's own line rate.",
+		{ key = "rate", label = _("Rate"), tooltip = _("Rate: the game's own line rate."),
 			value = function(row : MlsCargoLineRow) : number return row.rate end },
-		{ key = "vehicles", iconPath = widgets.ICON_VEHICLES, tooltip = "Vehicles: the number of vehicles on the line.",
+		{ key = "vehicles", iconPath = widgets.ICON_VEHICLES, tooltip = _("Vehicles: the number of vehicles on the line."),
 			value = function(row : MlsCargoLineRow) : number return row.numVehicles end },
-		{ key = "journey", label = "Journey", tooltip = "Journey: one full round trip, including time at stations.\nIncludes estimated legs, marked ~.",
+		{ key = "journey", label = _("Journey"),
+			tooltip = _("Journey: one full round trip, including time at stations.") .. "\n" .. _("Includes estimated legs, marked ~."),
 			value = function(row : MlsCargoLineRow) : number return row.journey.time end },
-		{ key = "length", label = _("Length"), tooltip = "Length: line length as the crow flies.",
+		{ key = "length", label = _("Length"), tooltip = _("Length: line length as the crow flies."),
 			value = function(row : MlsCargoLineRow) : number return row.journey.distance end },
-		{ key = "speed", label = _("Speed"), tooltip = "Average speed", value = speedOf },
-		{ key = "frequency", label = "Freq.",
+		{ key = "speed", label = _("Speed"), tooltip = _("Average speed"), value = speedOf },
+		{ key = "frequency", label = _("Freq."),
 			value = function(row : MlsCargoLineRow) : number return row.frequency end },
 		{ key = "balance", label = _("Balance"),
 			value = function(row : MlsCargoLineRow) : number return row.balance end },
@@ -90,10 +98,13 @@ local function lineRow(row : MlsCargoLineRow) : TreeNodeId
 	local frequency = row.frequency > 0 and luaUtils.getTimeStr(row.frequency) or "?"
 	return widgets.tableRow(COLUMN_WEIGHTS, {
 		listTable.colourButton(row.lineId),
-		listTable.lineName(row.lineId, function(entity : Engine.Entity) cargoGui.openCargoDetails(entity) end, "Open Cargo Details"),
-		widgets.cargoTypesCell(row.types, "Carried:", "No cargo capacity"),
+		listTable.lineName(row.lineId, function(entity : Engine.Entity) cargoGui.openCargoDetails(entity) end, _("Open Cargo Details")),
+		widgets.cargoTypesCell(row.types, _("Cargo") .. ":", _("No cargo capacity")),
 		num(tostring(row.onBoard) .. "/" .. tostring(row.capacity)),
 		num(row.capacity > 0 and (tostring(row.loadPct) .. "%") or "?"),
+		-- "-" when no stop loads from an industry or warehouse; the tooltip
+		-- splits it by stop (station names and numbers, nothing to translate).
+		num(row.waiting >= 0 and tostring(row.waiting) or "-", row.waitingByStop ~= "" and row.waitingByStop or nil),
 		iconNum(ICON_UNHAPPY, tostring(row.unhappy)),
 		num(tostring(row.rate)),
 		num(tostring(row.numVehicles)),
@@ -112,7 +123,7 @@ local function body(linesTable : MlsCargoLinesTable, view : MlsListView) : {Tree
 		return children
 	end
 	if linesTable.error ~= nil then
-		children[1] = sectionTitle("Could not read: " .. tostring(linesTable.error), nil, view.refresh)
+		children[1] = sectionTitle(fmt.couldNotRead(linesTable.error), nil, view.refresh)
 		return children
 	end
 
@@ -123,33 +134,30 @@ local function body(linesTable : MlsCargoLinesTable, view : MlsListView) : {Tree
 		if matches(row.name, row.kind) then shown[#shown + 1] = row end
 	end
 	-- "Lines: 12" or "Lines: 5 of 12", as on the Passengers tab.
-	local title = _("Lines") .. ": " .. tostring(total)
-	if #shown ~= total then title = _("Lines") .. ": " .. tostring(#shown) .. " of " .. tostring(total) end
-	local titleTooltip = "Figures as they were when the list was computed; press Refresh for current ones."
+	local count = tostring(total)
+	if #shown ~= total then
+		count = lang_util.format(_("{shown} of {total}"), { shown = tostring(#shown), total = tostring(total) })
+	end
+	local title = _("Lines") .. ": " .. count
+	local titleTooltip = _("Figures as they were when the list was computed; press Refresh for current ones.")
 	if total == 0 then
 		children[1] = sectionTitle(title, titleTooltip, view.refresh)
-		children[2] = text("No lines with vehicles.", "font-scale-body")
+		children[2] = text(_("No lines with vehicles."), "font-scale-body")
 	else
 		-- Title, filters, search and Refresh share one row (more room for the list).
 		local columns = cargoColumns()
-		children[1] = listTable.filterRow("cargo", title, titleTooltip, "All lines", kindFilters(),
+		children[1] = listTable.filterRow("cargo", title, titleTooltip, _("All lines"), kindFilters(),
 			view.filter, view.onKind, view.onSearch, view.refresh)
 		children[2] = listTable.headerRow(COLUMN_WEIGHTS, columns, view.sort, view.onSort)
 		local rows : {TreeNodeId} = {}
 		for _, row in ipairs(listTable.sortRows(shown, columns, view.sort, nameOf)) do
 			rows[#rows + 1] = lineRow(row)
 		end
-		children[3] = listTable.scrollList("cargo", rows, "No line matches the filter.")
+		children[3] = listTable.scrollList("cargo", rows, _("No line matches the filter."))
 	end
 	-- The window has a fixed height; the spacer takes the leftover room so
-	-- the parts above pack together and the footer stays at the bottom.
+	-- the parts above pack together.
 	children[#children + 1] = gui_react_util.makeVerticalSpacer()
-	local parts : {string} = {}
-	if linesTable.otherLines > 0 then
-		parts[#parts + 1] = tostring(linesTable.otherLines) .. " without vehicles"
-	end
-	local note = listTable.footer(parts)
-	if note ~= nil then children[#children + 1] = text(note, "font-scale-annotation") end
 	return children
 end
 

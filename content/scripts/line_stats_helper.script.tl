@@ -200,9 +200,11 @@ local function fillUnhappy(stats : MlsLineStats, lineId : Engine.Entity)
 	stats.unhappyOnBoard = line ~= nil and line.countBad or 0
 end
 
--- The line's passenger capacity usage ({used, capacity}), or nil.
+-- The line's passenger capacity usage ({used, capacity}), or nil. `false`,
+-- as the game's line window card (cargo_util.tl:709): `true` under-counts
+-- capacity on some trains (MI2N, 6443911: 100/102 with 170 seats).
 local function paxUsage(lineId : Engine.Entity) : UtilLine.LineCapacityUsage
-	local usages = api.engine.util.line.getLineCapacityUsages(lineId, true)
+	local usages = api.engine.util.line.getLineCapacityUsages(lineId, false)
 	return usages ~= nil and usages[paxId() + 1] or nil
 end
 

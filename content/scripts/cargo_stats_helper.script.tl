@@ -10,8 +10,10 @@
 -- What the engine keeps for cargo (verified in game, 2026-10-10): per type, the line's
 -- capacity and items on board, the vehicles' loads, the game's quality
 -- (unhappy) count, and per stop the types configured to load. There is no
--- "waiting at a stop for this line" and no leg demand for cargo, so neither
--- is computed here.
+-- "waiting at a stop for this line" and no leg demand for cargo. What waits
+-- is the stock of the industries and warehouses a stop reaches (2026-11-11):
+-- read only when collect() is asked for it (Cargo Details), since the Lines
+-- window's Cargo tab and the line-window card don't show it.
 --
 -- Index rules: Lua lists are 1-based; cargo-indexed lists use cargo id + 1.
 --
@@ -56,6 +58,8 @@ local function emptyStats(lineId : Engine.Entity, kind : string) : MlsCargoStats
 		unhappy = 0,
 		types = {},
 		stopLoads = {},
+		stopWaiting = {},
+		stopWaitingByType = {},
 		legLoad = {},
 		legLoadByType = {},
 		legVehicles = {},
@@ -178,7 +182,86 @@ local function readStopLoads(lineId : Engine.Entity, stopCount : integer, caps :
 	return loads
 end
 
-local function collectUnsafe(lineId : Engine.Entity) : MlsCargoStats
+-- Cargo waiting at a stop for the types it loads: the stocks of every
+-- industry and warehouse the stop's stations reach (probed in game
+-- 2026-11-11, ENGINE_FACTS §6). The catchables carry their own STOCK_LIST.
+-- An industry's OutputStock holds its one cargoType; a warehouse's
+-- StorageStock (cargoType -1, maybe mixed) any type, so it is asked for each.
+-- Input stocks are skipped, and with them the town buildings. Returns the
+-- count per type and whether the stop reaches any output or storage stock.
+local function waitingAtStop(stationGroup : Engine.Entity, ids : {integer}) : {integer : integer}, boolean
+	local counts : {integer : integer} = {}
+	local group = api.engine.getComponent(stationGroup, CT.STATION_GROUP) as Engine.Component.StationGroup
+	if group == nil or group.stations == nil then return counts, false end
+	local stockType = api.type["enum"].StockListType
+	local atStock = api.engine.system.simEntityAtStockSystem
+	local seen : {Engine.Entity : boolean} = {}
+	local reachesStock = false
+	for _, station in ipairs(group.stations) do
+		for _, entity in ipairs(api.engine.system.catchmentAreaSystem.getStationCatchables(station, true) or {}) do
+			if not seen[entity] then
+				seen[entity] = true
+				local stockList = api.engine.getComponent(entity, CT.STOCK_LIST) as Engine.Component.StockList
+				for j, stock in ipairs(stockList ~= nil and stockList.stocks or {}) do
+					local storage = stock.type == stockType.StorageStock
+					if storage or stock.type == stockType.OutputStock then
+						reachesStock = true
+						for _, id in ipairs(ids) do
+							if storage or stock.cargoType == id as CargoTypeId then
+								local count = atStock.getStockCountForCargoType(entity, (j - 1) as StockId, id as CargoTypeId) or 0
+								counts[id] = (counts[id] or 0) + count
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	return counts, reachesStock
+end
+
+-- Per stop, the Waiting figure and its per-type tooltip lines (-1 / "" =
+-- no figure: the stop loads none of the line's types or reaches no stock).
+local function readStopWaiting(stats : MlsCargoStats, waitingCache : MlsWaitingCache)
+	-- A line can call at the same station group twice, and the Cargo tab's
+	-- lines share stations: read each once per set of types (the cache is
+	-- the caller's, never module state).
+	local cache = waitingCache.counts
+	local reachesCache = waitingCache.reaches
+	for i, stationGroup in ipairs(stats.stops) do
+		stats.stopWaiting[i] = -1
+		stats.stopWaitingByType[i] = ""
+		local ids : {integer} = {}
+		for _, cargoType in ipairs(stats.stopLoads[i] or {}) do
+			if cargoType.capacity > 0 then ids[#ids + 1] = cargoType.id end
+		end
+		if #ids > 0 and stationGroup ~= nil and api.engine.entityExists(stationGroup) then
+			local cacheKey = tostring(stationGroup) .. ":" .. table.concat(ids, ",")
+			local counts = cache[cacheKey]
+			local reachesStock = reachesCache[cacheKey]
+			if counts == nil then
+				counts, reachesStock = waitingAtStop(stationGroup, ids)
+				cache[cacheKey] = counts
+				reachesCache[cacheKey] = reachesStock
+			end
+			if reachesStock then
+				local total = 0
+				local parts : {string} = {}
+				for _, cargoType in ipairs(stats.stopLoads[i]) do
+					local count = counts[cargoType.id]
+					if count ~= nil and count > 0 then
+						total = total + count
+						parts[#parts + 1] = tostring(count) .. " " .. cargoType.name
+					end
+				end
+				stats.stopWaiting[i] = total
+				stats.stopWaitingByType[i] = table.concat(parts, "\n")
+			end
+		end
+	end
+end
+
+local function collectUnsafe(lineId : Engine.Entity, withWaiting : boolean, cache : MlsWaitingCache) : MlsCargoStats
 	if lineId == nil or not api.engine.entityExists(lineId) then
 		return emptyStats(lineId, "missing")
 	end
@@ -228,6 +311,7 @@ local function collectUnsafe(lineId : Engine.Entity) : MlsCargoStats
 	stats.rate = api.engine.util.line.calcLineStationThroughput(lineId) or 0
 
 	stats.stopLoads = readStopLoads(lineId, stopCount, caps, used, names, icons)
+	if withWaiting then readStopWaiting(stats, cache or { counts = {}, reaches = {} }) end
 
 	-- Vehicles: cargo load and capacity over all carried types. The per-type
 	-- counts are kept per vehicle for the per-leg breakdown below.
@@ -278,8 +362,8 @@ local function collectUnsafe(lineId : Engine.Entity) : MlsCargoStats
 end
 
 -- Never throws: an error in one line must not break the window.
-local function collect(lineId : Engine.Entity) : MlsCargoStats
-	local ok, result = pcall(collectUnsafe, lineId)
+local function collect(lineId : Engine.Entity, withWaiting? : boolean, cache? : MlsWaitingCache) : MlsCargoStats
+	local ok, result = pcall(collectUnsafe, lineId, withWaiting == true, cache)
 	if ok then return result as MlsCargoStats end
 	local stats = emptyStats(lineId, "error")
 	stats.error = tostring(result)

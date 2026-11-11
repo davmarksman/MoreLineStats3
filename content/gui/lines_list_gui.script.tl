@@ -19,6 +19,7 @@ local game_react_globals = ug_require "::/gui/main/game_react_globals.tl" as Gam
 local gui_react_util     = ug_require "::/gui/main/gui_react_util.tl" as GuiReactUtil
 local button_react_util  = ug_require "::/gui/main/button_react_util.tl" as ButtonReactUtil
 local main_mod_button_area = ug_require "::/gui/main/main_mod_button_area.tl" as MainModButtonArea
+local lang_util          = ug_require "::/scripts/lang_util.tl" as LangUtil
 
 -- Own modules: path constant plus a cast to the record in tealdef/mls_def.d.tl.
 local LINES_HELPER : string = "bottle_more_line_stats::/scripts/lines_helper.script.tl"
@@ -35,12 +36,16 @@ local widgets = require(WIDGETS) as MlsWidgets
 local listTable = require(LIST_TABLE) as MlsListTable
 local cargoLinesGui = require(CARGO_LINES_GUI) as MlsCargoLinesGui
 local lineGui = require(LINE_GUI) as MlsLineGui
+-- Where the window reopens.
+local WINDOW_POSITION : string = "bottle_more_line_stats::/gui/window_position.script.tl"
+local windowPosition = require(WINDOW_POSITION) as MlsWindowPosition
+local WINDOW_KIND : string = "lines"
 
 local text, sectionTitle = widgets.text, widgets.sectionTitle
 local num, iconNum = listTable.num, listTable.iconNum
 
 -- Dotted like the timetable mod's id: the stylesheet rule "Window#<id>"
--- that centres the window is keyed on it.
+-- that sizes the window is keyed on it.
 local WINDOW_ID : string = "mls.lines.window"
 
 -- Tab values (the TabWidget is keyed by value, not index).
@@ -70,7 +75,7 @@ local function kindFilters() : {MlsKindFilter}
 		{ kind = "train", iconPath = "::/gui/hud/icons/vehicle_train.tga", tooltip = _("Show Train Lines") },
 		{ kind = "ship", iconPath = "::/gui/hud/icons/vehicle_ship.tga", tooltip = _("Show Ship Lines") },
 		{ kind = "aircraft", iconPath = "::/gui/hud/icons/vehicle_airplane.tga", tooltip = _("Show Air Lines") },
-		{ kind = "helicopter", iconPath = "::/gui/hud/icons/vehicle_helicopter.tga", tooltip = "Show Helicopter Lines" },
+		{ kind = "helicopter", iconPath = "::/gui/hud/icons/vehicle_helicopter.tga", tooltip = _("Show Helicopter Lines") },
 	}
 end
 
@@ -88,6 +93,7 @@ local record LinesWindowParams
 	tab : string
 	passengerTable : MlsLinesTable
 	cargoTable : MlsCargoLinesTable
+	spot : MlsWindowSpot   -- where the window opens; nil = centred
 end
 
 ------------------------------------------------------------
@@ -113,27 +119,28 @@ end
 -- the game's "Frequency".
 local function passengerColumns() : {MlsColumn<MlsLineRow>}
 	return {
-		{ key = "name", label = _("Name"), tooltip = "Open Line Details" },
-		{ key = "demand", label = _("Demand"), tooltip = "Demand: passengers on the line now, in vehicles plus waiting at stops.",
+		{ key = "name", label = _("Name"), tooltip = _("Open Line Details") },
+		{ key = "demand", label = _("Demand"), tooltip = _("Demand: passengers on the line now, in vehicles plus waiting at stops."),
 			value = function(row : MlsLineRow) : number return row.demand end },
-		{ key = "demandPct", label = "Demand %",
-			tooltip = "Demand as a share of the line's passenger capacity. High values mean there may not be enough vehicles.",
+		{ key = "demandPct", label = _("Demand %"),
+			tooltip = _("Demand as a share of the line's passenger capacity. High values mean there may not be enough vehicles."),
 			value = function(row : MlsLineRow) : number return row.demandPct end },
-		{ key = "load", label = pGetText("noun", "Load"), tooltip = "Load / capacity: passengers in the line's vehicles now, and the line's passenger capacity.",
+		{ key = "load", label = pGetText("noun", "Load"), tooltip = fmt.loadCapacityTooltip(),
 			value = function(row : MlsLineRow) : number return row.onBoard end },
-		{ key = "waiting", label = "Waiting", tooltip = "Waiting: passengers waiting for the line at all of its stops.",
+		{ key = "waiting", label = _("Waiting"), tooltip = _("Waiting at Station"),
 			value = function(row : MlsLineRow) : number return row.waiting end },
 		{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = _("Unhappy Passengers"),
 			value = function(row : MlsLineRow) : number return row.unhappy end },
-		{ key = "busiest", label = "Busiest",
-			tooltip = "Busiest: passengers waiting at the line's busiest stop.",
+		{ key = "busiest", label = _("Busiest"),
+			tooltip = _("Busiest: passengers waiting at the line's busiest stop."),
 			value = function(row : MlsLineRow) : number return row.busiest end },
-		{ key = "journey", label = "Journey", tooltip = "Journey: one full round trip, including time at stations.\nIncludes estimated legs, marked ~.",
+		{ key = "journey", label = _("Journey"),
+			tooltip = _("Journey: one full round trip, including time at stations.") .. "\n" .. _("Includes estimated legs, marked ~."),
 			value = function(row : MlsLineRow) : number return row.journey.time end },
-		{ key = "length", label = _("Length"), tooltip = "Length: line length as the crow flies.",
+		{ key = "length", label = _("Length"), tooltip = _("Length: line length as the crow flies."),
 			value = function(row : MlsLineRow) : number return row.journey.distance end },
-		{ key = "speed", label = _("Speed"), tooltip = "Average speed", value = speedOf },
-		{ key = "frequency", label = "Freq.",
+		{ key = "speed", label = _("Speed"), tooltip = _("Average speed"), value = speedOf },
+		{ key = "frequency", label = _("Freq."),
 			value = function(row : MlsLineRow) : number return row.frequency end },
 		{ key = "balance", label = _("Balance"),
 			value = function(row : MlsLineRow) : number return row.balance end },
@@ -144,7 +151,7 @@ local function lineRow(row : MlsLineRow) : TreeNodeId
 	local frequency = row.frequency > 0 and luaUtils.getTimeStr(row.frequency) or "?"
 	return widgets.tableRow(COLUMN_WEIGHTS, {
 		listTable.colourButton(row.lineId),
-		listTable.lineName(row.lineId, function(entity : Engine.Entity) lineGui.openLineDetails(entity) end, "Open Line Details"),
+		listTable.lineName(row.lineId, function(entity : Engine.Entity) lineGui.openLineDetails(entity) end, _("Open Line Details")),
 		num(tostring(row.demand)),
 		num(row.capacity > 0 and (tostring(row.demandPct) .. "%") or "?"),
 		num(tostring(row.onBoard) .. "/" .. tostring(row.capacity)),
@@ -160,7 +167,7 @@ local function lineRow(row : MlsLineRow) : TreeNodeId
 end
 
 -- The children of the Passengers tab body: the title-and-filter row, header,
--- list, spacer, footer.
+-- list, spacer.
 local function passengerBody(linesTable : MlsLinesTable, view : MlsListView) : {TreeNodeId}
 	local children : {TreeNodeId} = {}
 	if linesTable == nil then
@@ -168,7 +175,7 @@ local function passengerBody(linesTable : MlsLinesTable, view : MlsListView) : {
 		return children
 	end
 	if linesTable.error ~= nil then
-		children[1] = sectionTitle("Could not read: " .. tostring(linesTable.error), nil, view.refresh)
+		children[1] = sectionTitle(fmt.couldNotRead(linesTable.error), nil, view.refresh)
 		return children
 	end
 
@@ -180,33 +187,30 @@ local function passengerBody(linesTable : MlsLinesTable, view : MlsListView) : {
 	end
 	-- "Lines: 12" or "Lines: 5 of 12": the count after the noun, so no
 	-- plural form; the tab says which kind. "Lines" is the game's word.
-	local title = _("Lines") .. ": " .. tostring(total)
-	if #shown ~= total then title = _("Lines") .. ": " .. tostring(#shown) .. " of " .. tostring(total) end
-	local titleTooltip = "Figures as they were when the list was computed; press Refresh for current ones."
+	local count = tostring(total)
+	if #shown ~= total then
+		count = lang_util.format(_("{shown} of {total}"), { shown = tostring(#shown), total = tostring(total) })
+	end
+	local title = _("Lines") .. ": " .. count
+	local titleTooltip = _("Figures as they were when the list was computed; press Refresh for current ones.")
 	if total == 0 then
 		children[1] = sectionTitle(title, titleTooltip, view.refresh)
-		children[2] = text("No lines with vehicles.", "font-scale-body")
+		children[2] = text(_("No lines with vehicles."), "font-scale-body")
 	else
 		-- Title, filters, search and Refresh share one row (more room for the list).
 		local columns = passengerColumns()
-		children[1] = listTable.filterRow(TAB_PASSENGERS, title, titleTooltip, "All lines", kindFilters(),
+		children[1] = listTable.filterRow(TAB_PASSENGERS, title, titleTooltip, _("All lines"), kindFilters(),
 			view.filter, view.onKind, view.onSearch, view.refresh)
 		children[2] = listTable.headerRow(COLUMN_WEIGHTS, columns, view.sort, view.onSort)
 		local rows : {TreeNodeId} = {}
 		for _, row in ipairs(listTable.sortRows(shown, columns, view.sort, nameOf)) do
 			rows[#rows + 1] = lineRow(row)
 		end
-		children[3] = listTable.scrollList(TAB_PASSENGERS, rows, "No line matches the filter.")
+		children[3] = listTable.scrollList(TAB_PASSENGERS, rows, _("No line matches the filter."))
 	end
 	-- The window has a fixed height; the spacer takes the leftover room so
-	-- the parts above pack together and the footer stays at the bottom.
+	-- the parts above pack together.
 	children[#children + 1] = gui_react_util.makeVerticalSpacer()
-	local parts : {string} = {}
-	if linesTable.otherLines > 0 then
-		parts[#parts + 1] = tostring(linesTable.otherLines) .. " without vehicles"
-	end
-	local note = listTable.footer(parts)
-	if note ~= nil then children[#children + 1] = text(note, "font-scale-annotation") end
 	return children
 end
 
@@ -264,6 +268,7 @@ local LinesWindowContent = react.RegisterRecipe(
 	"MlsLinesWindowContent",
 	function(params : LinesWindowParams) : TreeNodeId
 		react.useInputAction("IA_MENU_BACK", react.iaHandler(params.onClose))
+		windowPosition.usePoll(WINDOW_KIND, WINDOW_ID, params.spot)
 
 		-- The tables live in state so a tab switch and Refresh can replace
 		-- them. The first values are what the button's click handler computed.
@@ -296,7 +301,7 @@ local LinesWindowContent = react.RegisterRecipe(
 		-- gap from the search box).
 		local refresh = button_react_util.makeTextButton("primary,mls-refresh-btn", _("Refresh"),
 			function() compute(tab) end,
-			"Read all lines again. The list does not refresh by itself.")
+			_("Read all lines again. The list does not refresh by itself."))
 
 		-- Both tabs' sort and filter, whichever is shown (hooks must run in
 		-- the same order on every render).
@@ -317,8 +322,8 @@ local LinesWindowContent = react.RegisterRecipe(
 				value = tab,
 				onValueChange = function(newValue : string) onTab(newValue) end,
 				tabs = {
-					tabChild(TAB_PASSENGERS, _("Passengers"), "Lines that carry passengers, mixed lines included."),
-					tabChild(TAB_CARGO, _("Cargo"), "Lines that carry cargo, mixed lines included."),
+					tabChild(TAB_PASSENGERS, _("Passengers"), _("Lines that carry passengers, mixed lines included.")),
+					tabChild(TAB_CARGO, _("Cargo"), _("Lines that carry cargo, mixed lines included.")),
 				},
 			}),
 		}
@@ -345,7 +350,7 @@ local LinesWindow = react.RegisterWrapperRecipe(
 	"MlsLinesWindow",
 	builtin.Window,
 	function(params : LinesWindowParams) : TreeNodeId
-		return builtin.Window{
+		local win : builtin.WindowParam = {
 			id = WINDOW_ID,
 			title = "More Line Stats",
 			onClose = params.onClose,
@@ -353,6 +358,9 @@ local LinesWindow = react.RegisterWrapperRecipe(
 			autoFocusOnBecomingVisible = true,
 			content = LinesWindowContent(params),
 		}
+		-- Centred, or where it was last left (window_position).
+		windowPosition.place(win, params.spot)
+		return builtin.Window(win)
 	end)
 
 ------------------------------------------------------------
@@ -383,7 +391,7 @@ local LinesButton = react.RegisterPluginRecipe(
 		local function open()
 			local winApi = game_react_globals.getDefaultWindowApi()
 			if winApi == nil then return end
-			local params : LinesWindowParams = { onClose = onClose, tab = lastTab }
+			local params : LinesWindowParams = { onClose = onClose, tab = lastTab, spot = windowPosition.spotFor(WINDOW_KIND) }
 			if lastTab == TAB_CARGO then
 				params.cargoTable = linesHelper.collectCargo()
 				luaUtils.debug("lines window opened on Cargo with " .. tostring(#params.cargoTable.rows) .. " rows")
@@ -399,7 +407,7 @@ local LinesButton = react.RegisterPluginRecipe(
 		return builtin.BoxLayout{
 			children = {
 				builtin.ToggleButton{
-					meta = { tooltip = "More Line Stats: statistics for all of your passenger and cargo lines.", class = "mls-toolbar-btn" },
+					meta = { tooltip = _("More Line Stats: statistics for all of your passenger and cargo lines."), class = "mls-toolbar-btn" },
 					-- Short label: the HUD mod-button area is shared with other mods (user, 2026-10-18).
 					content = text("MLS", "font-scale-body"),
 					value = (openState:old() == true) and 1 or 0,

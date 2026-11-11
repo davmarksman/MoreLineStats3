@@ -10,15 +10,19 @@
 --     ignored.
 -- Types in tealdef/mls_def.d.tl (MlsWidgets).
 
+local react              = ug_require "::/gui/main/react.lua" as React
 local builtin            = ug_require "::/gui/main/builtin.lua" as Builtin
 local gui_react_util     = ug_require "::/gui/main/gui_react_util.tl" as GuiReactUtil
 local button_react_util  = ug_require "::/gui/main/button_react_util.tl" as ButtonReactUtil
+local lang_util          = ug_require "::/scripts/lang_util.tl" as LangUtil
 
 -- Base-game icons. The game resolves the "@2x" files itself.
 local ICON_LOCATE : string = "::/gui/line_vehicle_mgmt/icons/symbol_locate_20.tga"
 local ICON_VEHICLES : string = "::/gui/entity_window/icons/relation_vehicle_train_bus.tga"
 local ICON_AT_STATION : string = "::/gui/entity_window/icons/building_stations.tga"
 local ICON_EN_ROUTE : string = "::/gui/construction/build_control/symbol_slope_0_20.tga"
+-- The icon of the game's own Manage Line button (line.tl:142).
+local ICON_MANAGE_LINE : string = "::/gui/entity_window/icons/symbol_configure_line.tga"
 -- Generic cargo (the game's "mixed cargo" icon): stand-in for a cargo type
 -- without an icon.
 local ICON_CARGO : string = "::/cargos/icons/cargo_mixed.tga"
@@ -48,6 +52,46 @@ local function tableRow(weights : {number}, cells : {TreeNodeId}, class? : strin
 			columnWeights = weights,
 			rows = { builtin.Row{ cells = cells } },
 		},
+	}
+end
+
+-- The line manager on this line, as the game's own line window's Manage
+-- Line button (line.tl:141-147): its icon, label and event, and no tooltip.
+-- Icon then label in a Component (mls-btn-icon sizes the icon), the shape of
+-- button_react_util.makeIconTextButton.
+local function manageLineButton(lineId : Engine.Entity) : TreeNodeId
+	return builtin.Button{
+		meta = { class = "primary, mls-summary-btn" },
+		content = builtin.Component{
+			layout = builtin.BoxLayout{
+				orientation = builtin.type.Orientation.Horizontal,
+				children = {
+					builtin.ImageView{
+						meta = { class = "mls-btn-icon" },
+						path = ICON_MANAGE_LINE,
+						scaling = builtin.type.ImageViewScaling.AutoFit,
+					},
+					builtin.TextView{ meta = { class = "font-scale-body" }, text = _("Manage Line") },
+				},
+			},
+		},
+		onClick = function()
+			react.fireEvent(nil, "openVehicleManager", { openWithLineEntity = lineId })
+		end,
+	}
+end
+
+-- A vehicle's name that opens the game's vehicle window, as the game's own
+-- vehicle lists do (selectEntity, vehicle_react_util.tl:68); stack = true
+-- keeps this window open. mls-line-name strips the button padding so the
+-- compact row keeps its height.
+local function vehicleName(vehicleId : Engine.Entity, name : string) : TreeNodeId
+	return builtin.Button{
+		meta = { class = "mls-line-name" },
+		content = builtin.TextView{ meta = { class = "font-scale-body" }, text = name },
+		onClick = function()
+			react.fireEvent(nil, "selectEntity", { entity = vehicleId, stack = true })
+		end,
 	}
 end
 
@@ -148,7 +192,8 @@ end
 -- in the tooltip.
 local function vehiclesCell(count : integer, atStation : integer, kind : string) : TreeNodeId
 	-- One wording for every case (no plural forms), so it is one translation key.
-	local tooltip = "Vehicles on section: " .. tostring(count) .. ", at stop: " .. tostring(atStation)
+	local tooltip = lang_util.format(_("Vehicles on section: {count}, at stop: {atStop}"),
+		{ count = tostring(count), atStop = tostring(atStation) })
 	if count == 0 then
 		return text("-", "font-scale-body, mls-time", tooltip)
 	end
@@ -172,7 +217,7 @@ end
 -- "At Terminal" / "En route" icon for a
 -- vehicle row.
 local function whereIcon(atStation : boolean) : TreeNodeId
-	return icon(atStation and ICON_AT_STATION or ICON_EN_ROUTE, atStation and _("At Terminal") or "En route")
+	return icon(atStation and ICON_AT_STATION or ICON_EN_ROUTE, atStation and _("At Terminal") or _("En route"))
 end
 
 -- The window body: a horizontal row of columns inside a styled Component,
@@ -210,9 +255,11 @@ local function cargoTypesCell(types : {MlsCargoType}, heading : string, emptyToo
 	if #types == 0 then
 		return text("-", "font-scale-body, mls-time", emptyTooltip)
 	end
+	-- Read before the loop: its `_` index would hide the global _().
+	local notCarried = " " .. _("(no vehicle of this line carries it)")
 	local names : {string} = {}
 	for _, cargoType in ipairs(types) do
-		names[#names + 1] = cargoType.name .. (cargoType.capacity > 0 and "" or " (no vehicle of this line carries it)")
+		names[#names + 1] = cargoType.name .. (cargoType.capacity > 0 and "" or notCarried)
 	end
 	local tooltip = heading .. "\n" .. table.concat(names, "\n")
 	local children : {TreeNodeId} = {}
@@ -248,5 +295,7 @@ local exports : MlsWidgets = {
 	whereIcon = whereIcon,
 	windowBody = windowBody,
 	cargoTypesCell = cargoTypesCell,
+	manageLineButton = manageLineButton,
+	vehicleName = vehicleName,
 }
 return exports

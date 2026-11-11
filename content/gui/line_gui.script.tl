@@ -21,6 +21,7 @@ local game_react_globals = ug_require "::/gui/main/game_react_globals.tl" as Gam
 local content_card       = ug_require "::/gui/main/content_card.tl" as ContentCard
 local line_eow           = ug_require "::/gui/entity_window/line/line_eow.script.tl" as LineEow
 local line_react_util    = ug_require "::/gui/line_vehicle_mgmt/line_react_util.tl" as LineReactUtil
+local lang_util          = ug_require "::/scripts/lang_util.tl" as LangUtil
 
 -- Own modules go through a path constant and a cast to their record in
 -- tealdef/mls_def.d.tl, because `tl check` can't resolve "<modId>::/" paths.
@@ -41,6 +42,10 @@ local cargoGui = require(CARGO_GUI) as MlsCargoGui
 -- The cargo collector, for the card's row on a cargo line.
 local CARGO_STATS_HELPER : string = "bottle_more_line_stats::/scripts/cargo_stats_helper.script.tl"
 local cargoStatsHelper = require(CARGO_STATS_HELPER) as MlsCargoStatsHelper
+-- Where the window reopens.
+local WINDOW_POSITION : string = "bottle_more_line_stats::/gui/window_position.script.tl"
+local windowPosition = require(WINDOW_POSITION) as MlsWindowPosition
+local WINDOW_KIND : string = "lineDetails"
 
 -- Widget helpers shared with the Cargo Details window (gui/widgets.script.tl).
 local text, tableRow, icon, iconCell = widgets.text, widgets.tableRow, widgets.icon, widgets.iconCell
@@ -53,7 +58,10 @@ local journeyTooltip, demandStr = fmt.journeyTooltip, fmt.demandStr
 local competingTimeStr, competingTimeTooltip = fmt.competingTimeStr, fmt.competingTimeTooltip
 local differenceStr, differenceTooltip, isFaster = fmt.differenceStr, fmt.differenceTooltip, fmt.isFaster
 
-local REFRESH_SECONDS : number = 10.0
+-- The window's figures and the line-window card: 5 s (user, 2026-11-11).
+local REFRESH_SECONDS : number = 5.0
+-- The Competing Lines panel stays at 10 s, as the station window's list.
+local COMPETING_REFRESH_SECONDS : number = 10.0
 
 -- Column weights, shared by header and rows so the columns line up.
 -- Stop list: #+pin, Stop, Waiting, Unhappy, Demand, Vehicles, Distance, Speed, To next.
@@ -83,9 +91,37 @@ local ICON_VEHICLES : string = widgets.ICON_VEHICLES
 -- The game's "mixed cargo" icon, for the cargo line's load cell (as in Cargo Details).
 local ICON_CARGO : string = "::/cargos/icons/cargo_mixed.tga"
 
-local COMPETING_TITLE_TOOLTIP : string = "For each later station on this line: the other passenger lines that also go there from the selected stop, fastest first."
-local MORE_TOOLTIP : string = "Show, for the selected stop, the vehicles on the way to the next stop and the other lines that go to the same stations."
-local LESS_TOOLTIP : string = "Hide the vehicles and competing-lines panel to make the window smaller."
+-- Texts used in more than one place. Functions, not constants: _() runs at
+-- use time, never at load.
+local function moreTooltip() : string
+	return _("Show, for the selected stop, the vehicles on the way to the next stop and the other lines that go to the same stations.")
+end
+-- The Lines list's column sentences, also the card's and the summary's tooltips.
+local function demandTooltip() : string
+	return _("Demand: passengers on the line now, in vehicles plus waiting at stops.") .. "\n"
+		.. _("Demand as a share of the line's passenger capacity. High values mean there may not be enough vehicles.")
+end
+-- The game's own words, so its catalog translates them (sim_person_eow).
+local function waitingTooltip() : string
+	return _("Waiting at Station")
+end
+-- The game's own words, so its catalog translates them (station_group.tl:146).
+local function unhappyTooltip() : string
+	return _("Unhappy Passengers")
+end
+local function lengthTooltip() : string
+	return _("Length: line length as the crow flies.")
+end
+-- The stop list's header and cell sentences.
+local function stopDemandTooltip() : string
+	return _("Demand: passengers travelling between this stop and the next one on this line now (waiting + on board).")
+end
+local function distanceTooltip() : string
+	return _("Distance to the next stop as the crow flies.")
+end
+local function speedTooltip() : string
+	return _("Speed: average speed to the next stop, crow-flies distance over driving time where known.")
+end
 
 ------------------------------------------------------------
 -- TYPES
@@ -96,6 +132,7 @@ local record WindowParams
 	title : string
 	onClose : function()
 	initialStop : integer  -- 1-based stop selected on open; nil = stop 1
+	spot : MlsWindowSpot   -- where the window opens; nil = centred
 end
 
 local record CardParams
@@ -139,10 +176,10 @@ end
 -- Shown instead of stats for lines that have none; nil for a passenger line.
 local function messageFor(stats : MlsLineStats) : string
 	if stats == nil then return _("Loading...") end
-	if stats.kind == "cargo" then return "This line carries no passengers." end
-	if stats.kind == "empty" then return "This line has no vehicles." end
-	if stats.kind == "missing" then return "This line no longer exists." end
-	if stats.kind == "error" then return "Could not read: " .. tostring(stats.error) end
+	if stats.kind == "cargo" then return _("This line carries no passengers.") end
+	if stats.kind == "empty" then return _("This line has no vehicles.") end
+	if stats.kind == "missing" then return _("This line no longer exists.") end
+	if stats.kind == "error" then return fmt.couldNotRead(stats.error) end
 	return nil
 end
 
@@ -160,6 +197,13 @@ local function stopList(stats : MlsLineStats, selected : integer, onSelect : fun
 		maxUnhappy = math.max(maxUnhappy, stats.unhappyWaiting[i] or 0)
 		maxDemand = math.max(maxDemand, stats.legDemand[i] or 0)
 	end
+	-- The cell tooltips repeat the header icons' sentences word for word,
+	-- so each is one translation key.
+	local waitingTip = waitingTooltip()
+	local unhappyTip = unhappyTooltip()
+	local demandBaseTip = stopDemandTooltip()
+	local busiestNote = _("The busiest leg of this line.")
+	local speedTip = speedTooltip()
 	for i = 1, count do
 		local leg = stats.legs[i] or { time = 0, drive = 0, estimated = false, distance = 0 }
 		local name = stats.stopNames[i] or "?"
@@ -168,27 +212,22 @@ local function stopList(stats : MlsLineStats, selected : integer, onSelect : fun
 		local demand = stats.legDemand[i] or 0
 		local vehicles = stats.legVehicles[i] or 0
 
-		-- The cell tooltips repeat the header icons' sentences word for word,
-		-- so each is one translation key.
-		local unhappyTip = "Unhappy: waiting passengers unhappy with the wait, by the game's own measure."
-
 		local busiest = demand > 0 and demand == maxDemand
-		local demandTip = "Demand: passengers travelling between this stop and the next one on this line now (waiting + on board)."
-		if busiest then demandTip = demandTip .. "\nThe busiest leg of this line." end
+		local demandTip = demandBaseTip
+		if busiest then demandTip = demandTip .. "\n" .. busiestNote end
 
 		local atStation = stats.legAtStation[i] or 0
 		-- The kind of the one vehicle on this section (only used when there is one).
 		local kind = widgets.kindOnLeg(stats.vehicles, i)
 
 		local distanceTip = leg.distance > 0
-			and "Distance to the next stop as the crow flies."
-			or "No position known for one of the two stations."
-		local speedTip = "Speed: average speed to the next stop, crow-flies distance over driving time where known."
+			and distanceTooltip()
+			or _("No position known for one of the two stations.")
 
 		rows[i] = stopRow({
 			stopLocateButton(i, stats.stops[i]),
 			text(name, "font-scale-body"),
-			text(tostring(waiting), "font-scale-body, mls-time", "Waiting: passengers waiting at the stop for this line."),
+			text(tostring(waiting), "font-scale-body, mls-time", waitingTip),
 			text(tostring(unhappy), (unhappy > 0 and unhappy == maxUnhappy) and "font-scale-body, mls-time, mls-unhappy" or "font-scale-body, mls-time", unhappyTip),
 			text(tostring(demand), busiest and "font-scale-body, mls-time, mls-busiest" or "font-scale-body, mls-time", demandTip),
 			vehiclesCell(vehicles, atStation, kind),
@@ -209,8 +248,9 @@ local function stopList(stats : MlsLineStats, selected : integer, onSelect : fun
 	}
 end
 
--- Summary above the stop list: a title row with the Open Line Window and
--- Manage Line buttons and the More/Less toggle, then one row of the
+-- Summary above the stop list: a button row (Open Line Window and Manage
+-- Line on the left, the side-panel toggle on the right; no title, user
+-- 2026-11-11; the locate pin is in the title bar), then one row of the
 -- base game's icon-and-label cells (the Basics card look).
 local function summaryBlock(stats : MlsLineStats, lineWindow : TreeNodeId, lineManager : TreeNodeId, toggle : TreeNodeId) : TreeNodeId
 	local frequency = stats.frequency > 0 and luaUtils.getTimeStr(stats.frequency) or "?"
@@ -219,10 +259,9 @@ local function summaryBlock(stats : MlsLineStats, lineWindow : TreeNodeId, lineM
 			layout = builtin.BoxLayout{
 				orientation = builtin.type.Orientation.Horizontal,
 				children = {
-					text(_("Summary"), "font-scale-body", "Figures for the whole line, refreshed every 10 seconds."),
-					gui_react_util.makeHorizontalSpacer(),
 					lineWindow,
 					lineManager,
+					gui_react_util.makeHorizontalSpacer(),
 					toggle,
 				},
 			},
@@ -230,17 +269,12 @@ local function summaryBlock(stats : MlsLineStats, lineWindow : TreeNodeId, lineM
 		tableRow(SUMMARY_COLUMN_WEIGHTS, {
 			-- The same sentences as the Lines list's column tooltips, so each
 			-- is one translation key.
-			iconCell(ICON_DEMAND, demandStr(stats),
-				"Demand: passengers on the line now, in vehicles plus waiting at stops.\n"
-				.. "Demand as a share of the line's passenger capacity. High values mean there may not be enough vehicles."),
+			iconCell(ICON_DEMAND, demandStr(stats), demandTooltip()),
 			iconCell(ICON_PASSENGERS, tostring(stats.onBoard) .. "/" .. tostring(stats.capacity),
-				"Load / capacity: passengers in the line's vehicles now, and the line's passenger capacity."),
-			iconCell(ICON_WAITING, tostring(stats.waitingTotal),
-				"Waiting: passengers waiting for the line at all of its stops."),
-			iconCell(ICON_UNHAPPY, tostring(stats.unhappyWaitingTotal + stats.unhappyOnBoard),
-				"Unhappy: passengers unhappy with the line, waiting or on board."),
-			iconCell(ICON_DISTANCE, distanceStr(stats.journey.distance),
-				"Length: line length as the crow flies."),
+				fmt.loadCapacityTooltip()),
+			iconCell(ICON_WAITING, tostring(stats.waitingTotal), waitingTooltip()),
+			iconCell(ICON_UNHAPPY, tostring(stats.unhappyWaitingTotal + stats.unhappyOnBoard), unhappyTooltip()),
+			iconCell(ICON_DISTANCE, distanceStr(stats.journey.distance), lengthTooltip()),
 			iconCell(ICON_FREQUENCY, frequency, nil),
 			iconCell(ICON_TIME, legTimeStr(stats.journey), journeyTooltip(stats.journey)),
 		}, "mls-summary-icons"),
@@ -262,28 +296,28 @@ end
 local function vehicleRow(vehicle : MlsVehicle) : TreeNodeId
 	return tableRow(VEHICLE_COLUMN_WEIGHTS, {
 		locateButton(vehicle.id),
-		text(vehicle.name, "font-scale-body"),
-		text(tostring(vehicle.load) .. "/" .. tostring(vehicle.capacity), "font-scale-body, mls-time", "On board / capacity."),
+		widgets.vehicleName(vehicle.id, vehicle.name),
+		text(tostring(vehicle.load) .. "/" .. tostring(vehicle.capacity), "font-scale-body, mls-time", _("On board / capacity.")),
 		widgets.whereIcon(vehicle.atStation),
 	}, "mls-compact-row")
 end
 
 -- The vehicles between the selected stop and the next one. Reads the same
--- 10 s data as the stop list, so no timer of its own. Not scrolled: a leg
+-- 5 s data as the stop list, so no timer of its own. Not scrolled: a leg
 -- holds a handful of vehicles. Carries the Hide button for the whole column.
 local function vehiclesPanel(stats : MlsLineStats, selected : integer, onHide : function()) : TreeNodeId
 	local rows : {TreeNodeId} = {}
 	for _, vehicle in ipairs(stats.vehicles) do
 		if vehicle.leg == selected then rows[#rows + 1] = vehicleRow(vehicle) end
 	end
-	local hide = button_react_util.makeTextButton("primary", "Hide", onHide, LESS_TOOLTIP)
+	local hide = button_react_util.makeTextButton("primary", _("<- Less"), onHide, nil)
 	local children : {TreeNodeId} = {
-		sectionTitle("Vehicles on Section", nil, hide),
+		sectionTitle(_("Vehicles"), nil, hide),
 	}
 	if #rows == 0 then
 		-- No station names in the text: the selected stop is highlighted in
 		-- the stop list, and a static sentence is one translation key.
-		children[2] = text("No vehicle at this stop or on the way to the next one.", "font-scale-body")
+		children[2] = text(_("No vehicle at this stop or on the way to the next one."), "font-scale-body")
 	else
 		children[2] = builtin.Component{
 			layout = builtin.BoxLayout{
@@ -306,8 +340,9 @@ end
 ------------------------------------------------------------
 
 local function destinationRow(dest : MlsDestination) : TreeNodeId
-	return locateHeading(dest.stationGroup, "To " .. dest.name, "font-scale-body, mls-destination",
-		"Lines from here to this station, fastest first.")
+	-- The game's own "To", as in the station window's headings.
+	return locateHeading(dest.stationGroup, _("To") .. " " .. dest.name, "font-scale-body, mls-destination",
+		_("Lines from here to this station, fastest first."))
 end
 
 -- "<time>  <colour> <line name>  <difference>". Every name is a NameTextView
@@ -319,7 +354,7 @@ local function competingRow(line : MlsCompetingLine, dest : MlsDestination) : Tr
 		onClickOverride = line.isThisLine
 			and function(_ : Engine.Entity) end
 			or function(entity : Engine.Entity) openLineDetails(entity) end,
-		tooltip = line.isThisLine and "This line" or "Open Line Details",
+		tooltip = line.isThisLine and _("This line") or _("Open Line Details"),
 		styleClass = "mls-line-name",
 	}
 	local diffClass = isFaster(line, dest)
@@ -341,11 +376,12 @@ local CompetingPanel = react.RegisterRecipe(
 
 		local state = engine_react_util.useStepStateTimer(function() : MlsCompeting
 			return stationsHelper.getCompeting(lineId, stopIndex)
-		end, REFRESH_SECONDS)
+		end, COMPETING_REFRESH_SECONDS)
 		local data = state:old()
 
 		local children : {TreeNodeId} = {
-			sectionTitle("Competing Lines", COMPETING_TITLE_TOOLTIP),
+			sectionTitle(_("Competing Lines"),
+				_("For each later station on this line: the other passenger lines that also go there from the selected stop, fastest first.")),
 		}
 		-- No "From <station>" heading: the selected stop is highlighted in
 		-- the stop list already.
@@ -353,9 +389,9 @@ local CompetingPanel = react.RegisterRecipe(
 			children[2] = text(_("Loading..."), "font-scale-body")
 		else
 			if data.error ~= nil then
-				children[2] = text("Could not read: " .. tostring(data.error), "font-scale-body")
+				children[2] = text(fmt.couldNotRead(data.error), "font-scale-body")
 			elseif #data.destinations == 0 then
-				children[2] = text("No competing lines from this stop.", "font-scale-body")
+				children[2] = text(_("No competing lines from this stop."), "font-scale-body")
 			else
 				local rows : {TreeNodeId} = {}
 				for _, dest in ipairs(data.destinations) do
@@ -397,6 +433,7 @@ local LineDetailsContent = react.RegisterRecipe(
 		local lineId : Engine.Entity = params.lineId
 
 		react.useInputAction("IA_MENU_BACK", react.iaHandler(params.onClose))
+		windowPosition.usePoll(WINDOW_KIND, windowKey(lineId), params.spot)
 		react.onMount(function()
 			openWindows[lineId] = true
 			luaUtils.debug("window opened for line " .. tostring(lineId))
@@ -416,10 +453,10 @@ local LineDetailsContent = react.RegisterRecipe(
 		-- another (the station window preselects the stop at its station).
 		local selState = react.useState(params.initialStop or 1) as ReactStateT<integer>
 		-- Whether the right column (vehicles and competing lines) is shown:
-		-- open by default (user's choice, 2026-10-17), More/Less toggles it.
-		-- Hidden, the panel's recipe is not mounted, so its timer stops and
-		-- the window can be narrower.
-		local showState = react.useState(true) as ReactStateT<boolean>
+		-- closed by default (user's choice, 2026-11-11; open from 2026-10-17),
+		-- the toggle opens it. Hidden, the panel's recipe is not mounted, so
+		-- its timer stops and the window is narrower.
+		local showState = react.useState(false) as ReactStateT<boolean>
 
 		local message = messageFor(stats)
 		if message ~= nil then
@@ -431,38 +468,37 @@ local LineDetailsContent = react.RegisterRecipe(
 		local selected : integer = selState:old()
 		if selected == nil or selected < 1 or selected > count then selected = 1 end
 
-		local shown : boolean = showState:old() ~= false
+		local shown : boolean = showState:old() == true
+		-- Closed, the label names the panel: the game's "Vehicles" and our
+		-- "Competing Lines" keys, so no new translation.
 		local toggle = button_react_util.makeTextButton(
-			"primary",
-			shown and "<- Less" or "-> More",
+			"primary, mls-summary-btn",
+			shown and _("<- Less") or (_("Vehicles") .. "/" .. _("Competing Lines") .. " ->"),
 			function() showState:set(not shown) end,
-			shown and LESS_TOOLTIP or MORE_TOOLTIP)
+			(not shown) and moreTooltip() or nil)
 
 		-- The game's own line window, via the same UI event the timetable
-		-- mod fires; stack = true keeps this window open behind it.
-		local lineWindow = button_react_util.makeTextButton("primary", _("Open Line Window"),
+		-- mod fires; stack = true keeps this window open behind it. No
+		-- tooltip: the label says it all.
+		local lineWindow = button_react_util.makeTextButton("primary, mls-summary-btn", _("Open Line Window"),
 			function() react.fireEvent(nil, "selectEntity", { entity = lineId, stack = true }) end,
-			"Open the game's line window")
+			nil)
 
-		-- The line manager on this line: the event, and the label, of the
-		-- game's own line window's Manage Line button (line.tl:141-147).
-		local lineManager = button_react_util.makeTextButton("primary", _("Manage Line"),
-			function() react.fireEvent(nil, "openVehicleManager", { openWithLineEntity = lineId }) end,
-			"Open the game's line manager on this line")
+		-- The line manager on this line, as the game's own Manage Line button.
+		local lineManager = widgets.manageLineButton(lineId)
 
 		local left = styledColumn("mls-left", {
 			summaryBlock(stats, lineWindow, lineManager, toggle),
 			stopRow({
 				text("#", "font-scale-annotation"),
 				text(_("Stop"), "font-scale-annotation"),
-				icon(ICON_PASSENGERS, "Waiting: passengers waiting at the stop for this line."),
-				icon(ICON_UNHAPPY, "Unhappy: waiting passengers unhappy with the wait, by the game's own measure."),
-				icon(ICON_DEMAND, "Demand: passengers travelling between this stop and the next one on this line now (waiting + on board)."
-					.. "\nThe busiest leg is highlighted."),
-				icon(ICON_VEHICLES, "Vehicles standing at this stop or on the way from it to the next one."),
-				icon(ICON_DISTANCE, "Distance to the next stop as the crow flies."),
-				icon(ICON_SPEED, "Speed: average speed to the next stop, crow-flies distance over driving time where known."),
-				icon(ICON_TIME, "To next: average time from this stop to the next one, including time at stations."),
+				icon(ICON_PASSENGERS, waitingTooltip()),
+				icon(ICON_UNHAPPY, unhappyTooltip()),
+				icon(ICON_DEMAND, stopDemandTooltip() .. "\n" .. _("The busiest leg is highlighted.")),
+				icon(ICON_VEHICLES, _("Vehicles standing at this stop or on the way from it to the next one.")),
+				icon(ICON_DISTANCE, distanceTooltip()),
+				icon(ICON_SPEED, speedTooltip()),
+				icon(ICON_TIME, _("To next: average time from this stop to the next one, including time at stations.")),
 			}),
 			stopList(stats, selected, function(index : integer)
 				if index >= 1 then selState:set(index) end
@@ -498,11 +534,15 @@ local LineDetailsWindow = react.RegisterWrapperRecipe(
 			closable = true,
 			autoFocusOnBecomingVisible = true,
 			content = LineDetailsContent(params),
+			-- The title-bar pin, as the game's line window has (view_manager.tl:291-293):
+			-- the camera follows the line (followEntity, the line window's own locate).
+			locateVisible = true,
+			onLocate = function()
+				if api.engine.entityExists(params.lineId) then api.gui.camera.followEntity(params.lineId, true) end
+			end,
 		}
-		-- Style class so the stylesheet can centre the window
-		-- (`Window!mls-details-window`); the game's entity window sets
-		-- meta.class the same way, WindowParam just doesn't declare it.
-		(win as {string : any}).meta = { class = "mls-details-window" }
+		-- Centred, or where the last one was left (window_position).
+		windowPosition.place(win, params.spot)
 		return builtin.Window(win)
 	end)
 
@@ -522,8 +562,9 @@ openLineDetails = function(lineId : Engine.Entity, stopIndex? : integer)
 	luaUtils.debug("opening window " .. key)
 	winApi.addWindow(LineDetailsWindow, key, {
 		lineId = lineId,
-		title = "Line Details: " .. name,
+		title = lang_util.format(_("Line Details: {name}"), { name = name }),
 		initialStop = stopIndex,
+		spot = windowPosition.spotFor(WINDOW_KIND),
 		onClose = function()
 			winApi.removeWindow(LineDetailsWindow, key)
 			openWindows[lineId] = nil
@@ -559,18 +600,12 @@ local function cardRow(stats : MlsCardStats) : TreeNodeId
 	local passenger = stats.passenger
 	if passenger.kind == "passenger" then
 		return tableRow(CARD_PASSENGER_WEIGHTS, {
-			iconCell(ICON_DEMAND, demandStr(passenger),
-				"Demand: passengers on the line now, in vehicles plus waiting at stops.\n"
-				.. "Demand as a share of the line's passenger capacity. High values mean there may not be enough vehicles."),
-			iconCell(ICON_WAITING, tostring(passenger.waitingTotal),
-				"Waiting: passengers waiting for the line at all of its stops."),
-			iconCell(ICON_UNHAPPY, tostring(passenger.unhappyWaitingTotal + passenger.unhappyOnBoard),
-				"Unhappy: passengers unhappy with the line, waiting or on board."),
-			iconCell(ICON_DISTANCE, distanceStr(passenger.journey.distance),
-				"Length: line length as the crow flies."),
+			iconCell(ICON_DEMAND, demandStr(passenger), demandTooltip()),
+			iconCell(ICON_WAITING, tostring(passenger.waitingTotal), waitingTooltip()),
+			iconCell(ICON_UNHAPPY, tostring(passenger.unhappyWaitingTotal + passenger.unhappyOnBoard), unhappyTooltip()),
+			iconCell(ICON_DISTANCE, distanceStr(passenger.journey.distance), lengthTooltip()),
 			iconCell(ICON_TIME, legTimeStr(passenger.journey), journeyTooltip(passenger.journey)),
-			iconCell(ICON_SPEED, speedStr(passenger.journey),
-				"Average speed"),
+			iconCell(ICON_SPEED, speedStr(passenger.journey), _("Average speed")),
 		}, "mls-card-icons")
 	end
 	local cargo = stats.cargo
@@ -582,18 +617,16 @@ local function cardRow(stats : MlsCardStats) : TreeNodeId
 		end
 		return tableRow(CARD_CARGO_WEIGHTS, {
 			iconCell(ICON_CARGO, loadPct, _("Utilization")),
-			iconCell(ICON_DISTANCE, distanceStr(cargo.journey.distance),
-				"Length: line length as the crow flies."),
+			iconCell(ICON_DISTANCE, distanceStr(cargo.journey.distance), lengthTooltip()),
 			iconCell(ICON_TIME, legTimeStr(cargo.journey), journeyTooltip(cargo.journey)),
-			iconCell(ICON_SPEED, speedStr(cargo.journey),
-				"Average speed"),
+			iconCell(ICON_SPEED, speedStr(cargo.journey), _("Average speed")),
 		}, "mls-card-icons")
 	end
 	return nil
 end
 
 -- The figures row (when there is one) above two blue "primary" buttons,
--- always both. The row's data comes from a 10 s timer, as in the windows;
+-- always both. The row's data comes from a 5 s timer, as in the windows;
 -- the first read runs at mount. A line without passengers or without cargo
 -- gets a message in the window instead.
 local MlsCardContent = react.RegisterRecipe(
@@ -614,12 +647,12 @@ local MlsCardContent = react.RegisterRecipe(
 					"primary,mls-card-btn",
 					_("Passengers"),
 					function() openLineDetails(params.lineId) end,
-					"Open the Line Details window for this line."),
+					_("Open Line Details")),
 				button_react_util.makeTextButton(
 					"primary",
 					_("Cargo"),
 					function() cargoGui.openCargoDetails(params.lineId) end,
-					"Open the Cargo Details window for this line."),
+					_("Open Cargo Details")),
 				gui_react_util.makeHorizontalSpacer(),
 			},
 		}

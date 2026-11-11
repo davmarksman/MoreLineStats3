@@ -60,7 +60,7 @@ end
 -- event is what the timetable mod fires for the same purpose).
 local function colourButton(lineId : Engine.Entity) : TreeNodeId
 	return builtin.Button{
-		meta = { class = "mls-colour-btn", tooltip = "Open the game's line window" },
+		meta = { class = "mls-colour-btn", tooltip = _("Open Line Window") },
 		content = line_react_util.ColorWidget{ entity = lineId },
 		onClick = function()
 			react.fireEvent(nil, "selectEntity", { entity = lineId, stack = true })
@@ -88,7 +88,7 @@ end
 local function headerCell<R>(col : MlsColumn<R>, sort : MlsSortState, onSort : function(string)) : TreeNodeId
 	-- A column may have no tooltip of its own (Frequency).
 	local tooltip = (col.tooltip ~= nil and (col.tooltip .. "\n") or "")
-		.. "Click to sort by this column; click again to reverse."
+		.. _("Click to sort by this column; click again to reverse.")
 	-- The button centres its content by default; the two classes anchor it
 	-- left (Name) or right (the numbers) in the stylesheet.
 	local left = col.key == "name"
@@ -171,9 +171,9 @@ local function filterRow(tabKey : string, title : string, titleTooltip : string,
 	children[#children + 1] = builtin.TextInputField{
 		-- Keyed per tab: both tabs put a search box here, and without a key
 		-- the switch would reuse it with the other tab's half-typed text.
-		meta = { localKey = tabKey .. "-search", class = "mls-search", tooltip = "Show only lines whose name contains this text. Separate several terms with commas." },
+		meta = { localKey = tabKey .. "-search", class = "mls-search", tooltip = _("Show only lines whose name contains this text. Separate several terms with commas.") },
 		value = filter.search,
-		placeholderText = "Search lines",
+		placeholderText = _("Search lines"),
 		onTyping = onSearch,
 		onValueChange = onSearch,
 		acceptOnFocusLoss = true,
@@ -286,13 +286,6 @@ local function scrollList(tabKey : string, rowNodes : {TreeNodeId}, emptyMessage
 	}
 end
 
--- "Not shown: 2 without vehicles."; nil when there is nothing to say. The
--- count comes before the noun, so no plural form is needed.
-local function footer(parts : {string}) : string
-	if #parts == 0 then return nil end
-	return "Not shown: " .. table.concat(parts, ", ") .. "."
-end
-
 local exports : MlsListTable = {
 	num = num,
 	iconNum = iconNum,
@@ -305,6 +298,5 @@ local exports : MlsListTable = {
 	sortRows = sortRows,
 	nextSort = nextSort,
 	scrollList = scrollList,
-	footer = footer,
 }
 return exports
