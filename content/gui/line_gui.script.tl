@@ -74,9 +74,9 @@ local VEHICLE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 3 }
 -- Summary: Demand, Load/capacity, Waiting, Unhappy, Length, Frequency, Journey.
 local SUMMARY_COLUMN_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2, 2 }
 -- Line-window card, passenger line: Demand, Waiting, Unhappy, Length,
--- Journey, Speed. Cargo line: Load %, Length, Journey, Speed.
+-- Journey, Speed. Cargo line: Load %, Waiting, Length, Journey, Speed.
 local CARD_PASSENGER_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2 }
-local CARD_CARGO_WEIGHTS : {number} = { 2, 2, 2, 2 }
+local CARD_CARGO_WEIGHTS : {number} = { 2, 2, 2, 2, 2 }
 
 -- Base-game icons. The game resolves the "@2x" files itself.
 local ICON_DEMAND : string = "::/gui/entity_window/icons/passengers.tga"
@@ -311,21 +311,12 @@ local function vehiclesPanel(stats : MlsLineStats, selected : integer, onHide : 
 		if vehicle.leg == selected then rows[#rows + 1] = vehicleRow(vehicle) end
 	end
 	local hide = button_react_util.makeTextButton("primary", _("<- Less"), onHide, nil)
+	-- No station names in the empty text: the selected stop is highlighted
+	-- in the stop list, and a static sentence is one translation key.
 	local children : {TreeNodeId} = {
 		sectionTitle(_("Vehicles"), nil, hide),
+		widgets.fixedScrollBox("mls-vehicles-scrollarea", rows,_("No vehicle at this stop or on the way to the next one.")),
 	}
-	if #rows == 0 then
-		-- No station names in the text: the selected stop is highlighted in
-		-- the stop list, and a static sentence is one translation key.
-		children[2] = text(_("No vehicle at this stop or on the way to the next one."), "font-scale-body")
-	else
-		children[2] = builtin.Component{
-			layout = builtin.BoxLayout{
-				orientation = builtin.type.Orientation.Vertical,
-				children = rows,
-			},
-		}
-	end
 	return builtin.Component{
 		meta = { class = "mls-vehicles" },
 		layout = builtin.BoxLayout{
@@ -384,38 +375,25 @@ local CompetingPanel = react.RegisterRecipe(
 				_("For each later station on this line: the other passenger lines that also go there from the selected stop, fastest first.")),
 		}
 		-- No "From <station>" heading: the selected stop is highlighted in
-		-- the stop list already.
+		-- the stop list already. A fixed box of about eight rows (user,
+		-- 2026-11-12), the messages inside it, so the height never changes.
+		local rows : {TreeNodeId} = {}
+		local message : string
 		if data == nil then
-			children[2] = text(_("Loading..."), "font-scale-body")
+			message = _("Loading...")
+		elseif data.error ~= nil then
+			message = fmt.couldNotRead(data.error)
+		elseif #data.destinations == 0 then
+			message = _("No competing lines from this stop.")
 		else
-			if data.error ~= nil then
-				children[2] = text(fmt.couldNotRead(data.error), "font-scale-body")
-			elseif #data.destinations == 0 then
-				children[2] = text(_("No competing lines from this stop."), "font-scale-body")
-			else
-				local rows : {TreeNodeId} = {}
-				for _, dest in ipairs(data.destinations) do
-					rows[#rows + 1] = destinationRow(dest)
-					for _, line in ipairs(dest.lines) do
-						rows[#rows + 1] = competingRow(line, dest)
-					end
+			for _, dest in ipairs(data.destinations) do
+				rows[#rows + 1] = destinationRow(dest)
+				for _, line in ipairs(dest.lines) do
+					rows[#rows + 1] = competingRow(line, dest)
 				end
-				-- A ScrollArea rather than a List, so clicks don't highlight
-				-- rows. Its content needs a fixed width (mls-scroll-content),
-				-- or the rows shrink to their minimum and clip.
-				children[2] = builtin.ScrollArea{
-					content = builtin.Component{
-						meta = { class = "mls-scroll-content" },
-						layout = builtin.BoxLayout{
-							orientation = builtin.type.Orientation.Vertical,
-							children = rows,
-						},
-					},
-					horizontalPolicy = builtin.type.ScrollBarPolicy.AlwaysOff,
-					verticalPolicy = builtin.type.ScrollBarPolicy.AsNeeded,
-				}
 			end
 		end
+		children[2] = widgets.fixedScrollBox("mls-competing-scrollarea", rows, message)
 
 		return builtin.BoxLayout{
 			orientation = builtin.type.Orientation.Vertical,
@@ -581,13 +559,20 @@ end
 ------------------------------------------------------------
 
 -- The card's figures: the passenger collector for every line, and the
--- cargo collector too for a cargo line (about a millisecond each). Timer
--- thread: engine reads only, plain tables out.
+-- cargo collector too, with Waiting, for a cargo line (about a millisecond
+-- each). Timer thread: engine reads only, plain tables out.
+-- The card's own, narrower passenger test: the line has passenger capacity
+-- in use or passengers waiting. A line that is "passenger" only because a
+-- vehicle is configured for passengers gets the cargo row (if it has cargo).
+local function cardShowsPassengers(passenger : MlsLineStats) : boolean
+	return passenger.kind == "passenger" and (passenger.capacity > 0 or passenger.waitingTotal > 0)
+end
+
 local function collectCard(lineId : Engine.Entity) : MlsCardStats
 	local passenger = lineStatsHelper.collect(lineId)
 	local cargo : MlsCargoStats = nil
-	if passenger.kind == "cargo" then
-		cargo = cargoStatsHelper.collect(lineId)
+	if passenger.kind == "cargo" or (passenger.kind == "passenger" and not cardShowsPassengers(passenger)) then
+		cargo = cargoStatsHelper.collect(lineId, true)
 	end
 	return { passenger = passenger, cargo = cargo }
 end
@@ -598,7 +583,7 @@ end
 local function cardRow(stats : MlsCardStats) : TreeNodeId
 	if stats == nil then return nil end
 	local passenger = stats.passenger
-	if passenger.kind == "passenger" then
+	if cardShowsPassengers(passenger) then
 		return tableRow(CARD_PASSENGER_WEIGHTS, {
 			iconCell(ICON_DEMAND, demandStr(passenger), demandTooltip()),
 			iconCell(ICON_WAITING, tostring(passenger.waitingTotal), waitingTooltip()),
@@ -609,7 +594,7 @@ local function cardRow(stats : MlsCardStats) : TreeNodeId
 		}, "mls-card-icons")
 	end
 	local cargo = stats.cargo
-	if passenger.kind == "cargo" and cargo ~= nil and cargo.kind == "cargo" then
+	if cargo ~= nil and cargo.kind == "cargo" then
 		-- The Cargo tab's Load % figure: load as a share of capacity, rounded.
 		local loadPct : string = "?"
 		if cargo.capacity > 0 then
@@ -617,6 +602,7 @@ local function cardRow(stats : MlsCardStats) : TreeNodeId
 		end
 		return tableRow(CARD_CARGO_WEIGHTS, {
 			iconCell(ICON_CARGO, loadPct, _("Utilization")),
+			iconCell(ICON_WAITING, fmt.waitingStr(cargo.waiting), fmt.cargoWaitingTooltip()),
 			iconCell(ICON_DISTANCE, distanceStr(cargo.journey.distance), lengthTooltip()),
 			iconCell(ICON_TIME, legTimeStr(cargo.journey), journeyTooltip(cargo.journey)),
 			iconCell(ICON_SPEED, speedStr(cargo.journey), _("Average speed")),

@@ -27,6 +27,9 @@ local cargoStatsHelper = require(CARGO_STATS_HELPER) as MlsCargoStatsHelper
 local luaUtils = require(LUA_UTILS) as MlsLuaUtils
 local fmt = require(FORMATTING) as MlsFormatting
 local widgets = require(WIDGETS) as MlsWidgets
+-- The sortable header of the Lines window, for the section's Cargo table.
+local LIST_TABLE : string = "bottle_more_line_stats::/gui/list_table.script.tl"
+local listTable = require(LIST_TABLE) as MlsListTable
 -- Where the window reopens.
 local WINDOW_POSITION : string = "bottle_more_line_stats::/gui/window_position.script.tl"
 local windowPosition = require(WINDOW_POSITION) as MlsWindowPosition
@@ -47,16 +50,20 @@ local REFRESH_SECONDS : number = 5.0
 local STOP_COLUMN_WEIGHTS : {number} = { 2, 4, 3, 3, 2, 2, 3, 2, 3 }
 -- Vehicles on the selected leg: pin, name, load, where.
 local VEHICLE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 3 }
--- Cargo on Line: icon, name, load/capacity, unhappy.
-local TYPE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 2 }
--- Summary: Load/capacity, Rate, Unhappy, Length, Frequency, Journey.
-local SUMMARY_COLUMN_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2 }
+-- Cargo on the selected section: icon, load, waiting, unhappy, line
+-- capacity, wait ratio (no names, user 2026-11-12). The 412 px right column
+-- gives about 27 px per unit.
+local TYPE_COLUMN_WEIGHTS : {number} = { 1, 3, 3, 2, 3, 3 }
+-- Summary: Load/capacity, Waiting, Rate, Unhappy, Length, Frequency, Journey.
+local SUMMARY_COLUMN_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2, 2 }
 
 -- Base-game icons. The game resolves the "@2x" files itself.
 -- Generic cargo (the game's "mixed cargo" icon) for totals over all types,
 -- and the line window's own Rate icon.
 local ICON_CARGO : string = "::/cargos/icons/cargo_mixed.tga"
 local ICON_RATE : string = "::/gui/entity_window/icons/symbol_cargo.tga"
+-- Waiting: the station icon passenger Waiting uses (user's pick, 2026-11-12).
+local ICON_WAITING : string = "::/gui/entity_window/icons/building_stations.tga"
 local ICON_UNHAPPY : string = "::/gui/main/icons/symbol_emote_sad_colored.tga"
 local ICON_DISTANCE : string = "::/gui/game_bar/icons/statistics_line_26.tga"
 local ICON_SPEED : string = "::/gui/entity_window/icons/symbol_speed.tga"
@@ -71,8 +78,11 @@ end
 local function onSectionTooltip() : string
 	return _("On section: cargo on the vehicles between this stop and the next one now (vehicles loading at this stop included).")
 end
-local function typeLoadTooltip() : string
-	return _("On board / capacity for this type.")
+local function lineCapacityTooltip() : string
+	return _("Capacity: the line's total capacity for this type.")
+end
+local function waitRatioTooltip() : string
+	return _("Wait ratio: the cargo waiting at this stop divided by the line's capacity for this type.")
 end
 local function distanceTooltip() : string
 	return _("Distance to the next stop as the crow flies.")
@@ -103,6 +113,27 @@ end
 -- Lines with an open Cargo Details window, so the button can bring it to
 -- the front instead of opening a duplicate.
 local openWindows : {Engine.Entity : boolean} = {}
+
+-- Lines whose per-vehicle unhappy reading was logged in this window's life:
+-- once per open, the section sums against the line's own figure
+-- (getCargoQualityDataForVehicle is new to us, 2026-11-12).
+local unhappyLogged : {Engine.Entity : boolean} = {}
+
+local function logUnhappyCheck(stats : MlsCargoStats)
+	if unhappyLogged[stats.lineId] then return end
+	unhappyLogged[stats.lineId] = true
+	if not stats.sectionUnhappyRead then
+		luaUtils.log("cargo unhappy check, line " .. tostring(stats.lineId) .. ": per-vehicle quality read failed")
+		return
+	end
+	local parts : {string} = {}
+	for _, cargoType in ipairs(stats.types) do
+		local sum = 0
+		for _, legBad in ipairs(stats.legTypeUnhappy) do sum = sum + (legBad[cargoType.id] or 0) end
+		parts[#parts + 1] = cargoType.name .. " sections " .. tostring(sum) .. " / line " .. tostring(cargoType.unhappy)
+	end
+	luaUtils.log("cargo unhappy check, line " .. tostring(stats.lineId) .. ": " .. table.concat(parts, ", "))
+end
 
 -- Window keys share one container with the base game and with Line
 -- Details; a duplicate key crashes the UI.
@@ -160,6 +191,9 @@ local function stopList(stats : MlsCargoStats, selected : integer, onSelect : fu
 	-- The legs carrying the most cargo are highlighted; ties are all highlighted.
 	local maxLoad = 0
 	for i = 1, count do maxLoad = math.max(maxLoad, stats.legLoad[i] or 0) end
+	-- So is the stop with the most waiting.
+	local maxWaiting = 0
+	for i = 1, count do maxWaiting = math.max(maxWaiting, stats.stopWaiting[i] or -1) end
 	local onSectionTip = onSectionTooltip()
 	local fullestNote = _("The fullest section of this line.")
 	local speedTip = speedTooltip()
@@ -194,7 +228,9 @@ local function stopList(stats : MlsCargoStats, selected : integer, onSelect : fu
 			stopLocateButton(i, stats.stops[i]),
 			text(name, "font-scale-body"),
 			loadsCell(stats.stopLoads[i] or {}),
-			text(waiting >= 0 and tostring(waiting) or "-", "font-scale-body, mls-time", waitingCellTip),
+			text(waiting >= 0 and tostring(waiting) or "-",
+				(waiting > 0 and waiting == maxWaiting) and "font-scale-body, mls-time, mls-busiest" or "font-scale-body, mls-time",
+				waitingCellTip),
 			text(tostring(onLeg), busiest and "font-scale-body, mls-time, mls-busiest" or "font-scale-body, mls-time", loadTip),
 			vehiclesCell(vehicles, atStation, kind),
 			text(distanceStr(leg.distance), "font-scale-body, mls-time", distanceTip),
@@ -241,6 +277,7 @@ local function summaryBlock(stats : MlsCargoStats, lineWindow : TreeNodeId, line
 			iconCell(ICON_CARGO, tostring(stats.onBoard) .. "/" .. tostring(stats.capacity),
 				fmt.loadCapacityTooltip() .. "\n"
 				.. table.concat(perType, "\n")),
+			iconCell(ICON_WAITING, fmt.waitingStr(stats.waiting), fmt.cargoWaitingTooltip()),
 			iconCell(ICON_RATE, tostring(stats.rate),
 				_("Rate: the game's own line rate.")),
 			iconCell(ICON_UNHAPPY, tostring(stats.unhappy),
@@ -283,17 +320,8 @@ local function vehiclesPanel(stats : MlsCargoStats, selected : integer) : TreeNo
 	end
 	local children : {TreeNodeId} = {
 		sectionTitle(_("Vehicles")),
+		widgets.fixedScrollBox("mls-vehicles-scrollarea", rows,_("No vehicle at this stop or on the way to the next one.")),
 	}
-	if #rows == 0 then
-		children[2] = text(_("No vehicle at this stop or on the way to the next one."), "font-scale-body")
-	else
-		children[2] = builtin.Component{
-			layout = builtin.BoxLayout{
-				orientation = builtin.type.Orientation.Vertical,
-				children = rows,
-			},
-		}
-	end
 	return builtin.Component{
 		meta = { class = "mls-vehicles" },
 		layout = builtin.BoxLayout{
@@ -304,39 +332,143 @@ local function vehiclesPanel(stats : MlsCargoStats, selected : integer) : TreeNo
 end
 
 ------------------------------------------------------------
--- CARGO ON LINE (right, below the vehicles)
+-- CARGO ON THE SELECTED SECTION (right, above the vehicles)
 ------------------------------------------------------------
 
-local function typeRow(cargoType : MlsCargoType, loadTip : string, unhappyTip : string) : TreeNodeId
+-- Per-type figures of the section from the selected stop to the next one.
+-- waiting -1 = the stop doesn't load the type or reaches no stock ("-");
+-- unhappy -1 = a vehicle's quality could not be read ("?"); waitRatio -1 =
+-- no waiting figure or no capacity ("-").
+local record SectionRow
+	cargoType : MlsCargoType
+	load : integer
+	waiting : integer
+	unhappy : integer
+	capacity : integer
+	waitRatio : number
+end
+
+-- "0.4x", "2.5x" below 10, "10x", "23x" from there (rounded as shown, so
+-- the highlight and the sort match what is read).
+local function roundRatio(ratio : number) : number
+	if ratio < 9.95 then return math.floor(ratio * 10 + 0.5) / 10 end
+	return math.floor(ratio + 0.5)
+end
+local function ratioStr(ratio : number) : string
+	if ratio < 0 then return "-" end
+	if ratio < 10 then return string.format("%.1fx", ratio) end
+	return string.format("%dx", math.floor(ratio))
+end
+
+local function sectionRowOf(stats : MlsCargoStats, cargoType : MlsCargoType, selected : integer) : SectionRow
+	local stopWaiting = stats.stopTypeWaiting[selected]
+	local waiting = stopWaiting ~= nil and stopWaiting[cargoType.id] or -1
+	local waitRatio : number = -1
+	if waiting >= 0 and cargoType.capacity > 0 then
+		waitRatio = roundRatio(waiting / cargoType.capacity)
+	end
+	return {
+		cargoType = cargoType,
+		load = (stats.legTypeLoad[selected] or {})[cargoType.id] or 0,
+		waiting = waiting,
+		unhappy = stats.sectionUnhappyRead and ((stats.legTypeUnhappy[selected] or {})[cargoType.id] or 0) or -1,
+		capacity = cargoType.capacity,
+		waitRatio = waitRatio,
+	}
+end
+
+-- The table's columns after the icon, sortable by a header click.
+local function sectionColumns() : {MlsColumn<SectionRow>}
+	return {
+		-- The game's noun "Load" (its tables use the same context key).
+		{ key = "load", label = pGetText("noun", "Load"), tooltip = onSectionTooltip(),
+			value = function(row : SectionRow) : number return row.load end },
+		{ key = "waiting", label = _("Waiting"), tooltip = waitingTooltip(),
+			value = function(row : SectionRow) : number return row.waiting end },
+		{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = fmt.delayedTooltip(),
+			value = function(row : SectionRow) : number return row.unhappy end },
+		{ key = "capacity", label = _("Capacity"), tooltip = lineCapacityTooltip(),
+			value = function(row : SectionRow) : number return row.capacity end },
+		{ key = "waitRatio", label = _("Wait ratio"), tooltip = waitRatioTooltip(),
+			value = function(row : SectionRow) : number return row.waitRatio end },
+	}
+end
+
+-- The class of a number cell: the column's top figure (above 0; ties all)
+-- highlighted, amber as the stop list's fullest section, red for Unhappy.
+local function numClass(value : number, top : number, highlight : string) : string
+	if value > 0 and value == top then return "font-scale-body, mls-time, " .. highlight end
+	return "font-scale-body, mls-time"
+end
+
+local function typeRow(row : SectionRow, top : SectionRow, columns : {MlsColumn<SectionRow>}) : TreeNodeId
 	return tableRow(TYPE_COLUMN_WEIGHTS, {
-		cargoIcon(cargoType, cargoType.name),
-		text(cargoType.name, "font-scale-body", cargoType.name),
-		text(tostring(cargoType.onBoard) .. "/" .. tostring(cargoType.capacity), "font-scale-body, mls-time", loadTip),
-		text(tostring(cargoType.unhappy), cargoType.unhappy > 0 and "font-scale-body, mls-time, mls-unhappy" or "font-scale-body, mls-time", unhappyTip),
+		cargoIcon(row.cargoType, row.cargoType.name),
+		-- 0 on Load and Unhappy shows as "-" (user, 2026-11-12), so the figures stand out.
+		text(row.load > 0 and tostring(row.load) or "-", numClass(row.load, top.load, "mls-busiest"), columns[1].tooltip),
+		text(fmt.waitingStr(row.waiting), numClass(row.waiting, top.waiting, "mls-busiest"), columns[2].tooltip),
+		text(row.unhappy > 0 and tostring(row.unhappy) or (row.unhappy == 0 and "-" or "?"),numClass(row.unhappy, top.unhappy, "mls-unhappy"), columns[3].tooltip),
+		text(tostring(row.capacity), numClass(row.capacity, top.capacity, "mls-busiest"), columns[4].tooltip),
+		text(ratioStr(row.waitRatio), numClass(row.waitRatio, top.waitRatio, "mls-busiest"), columns[5].tooltip),
 	}, "mls-compact-row")
 end
 
--- One row per cargo type the line carries, largest capacity first. Top of
--- the right column, so it carries the Hide button for the whole column.
-local function cargoTypesPanel(stats : MlsCargoStats, onHide : function()) : TreeNodeId
+-- One row per cargo type the line carries and some stop loads, even when
+-- the section has none of it (the rows stay put between stops), in the chosen order (largest
+-- capacity first until a header is clicked). Top of the right column, so it
+-- carries the Hide button for the whole column.
+local function cargoTypesPanel(stats : MlsCargoStats, selected : integer, sort : MlsSortState,
+		onSort : function(string), onHide : function()) : TreeNodeId
 	local hide = button_react_util.makeTextButton("primary", _("<- Less"), onHide, nil)
-	local loadTip, unhappyTip = typeLoadTooltip(), fmt.delayedTooltip()
+	local columns = sectionColumns()
+	local sectionRows : {SectionRow} = {}
+	local top : SectionRow = { load = 0, waiting = 0, unhappy = 0, capacity = 0, waitRatio = 0 }
+	-- Only the types at least one stop loads (user, 2026-11-12): a type the
+	-- vehicles could carry but no stop loads would be a row of dashes.
+	local loadedSomewhere : {integer : boolean} = {}
+	for _, loads in ipairs(stats.stopLoads) do
+		for _, loaded in ipairs(loads) do loadedSomewhere[loaded.id] = true end
+	end
+	for _, cargoType in ipairs(stats.types) do
+		if loadedSomewhere[cargoType.id] then
+			local row = sectionRowOf(stats, cargoType, selected)
+			sectionRows[#sectionRows + 1] = row
+			top.load = math.max(top.load, row.load)
+			top.waiting = math.max(top.waiting, row.waiting)
+			top.unhappy = math.max(top.unhappy, row.unhappy)
+			top.capacity = math.max(top.capacity, row.capacity)
+			top.waitRatio = math.max(top.waitRatio, row.waitRatio)
+		end
+	end
+	listTable.sortRows(sectionRows, columns, sort, function(row : SectionRow) : string return row.cargoType.name end)
 	local rows : {TreeNodeId} = {
-		tableRow(TYPE_COLUMN_WEIGHTS, {
-			text("", "font-scale-annotation"),
-			text(_("Cargo"), "font-scale-annotation"),
-			-- The game's noun "Load" (its tables use the same context key).
-			text(pGetText("noun", "Load"), "font-scale-annotation, mls-time", loadTip),
-			icon(ICON_UNHAPPY, unhappyTip),
-		}),
+		listTable.headerRow(TYPE_COLUMN_WEIGHTS, columns, sort, onSort),
 	}
-	for _, cargoType in ipairs(stats.types) do rows[#rows + 1] = typeRow(cargoType, loadTip, unhappyTip) end
+	for _, row in ipairs(sectionRows) do rows[#rows + 1] = typeRow(row, top, columns) end
+	-- "From -> To": station names and a symbol, nothing to translate.
+	local count = #stats.stops
+	local nextIndex = selected < count and selected + 1 or 1
+	-- "<pin> From  ->  <pin> To", each pin locating its station.
+	local sectionTip = onSectionTooltip()
+	local section = builtin.Component{
+		layout = builtin.BoxLayout{
+			orientation = builtin.type.Orientation.Horizontal,
+			children = {
+				locateButton(stats.stops[selected]),
+				text(stats.stopNames[selected] or "?", "font-scale-body", sectionTip),
+				text("->", "font-scale-body, mls-section-arrow", sectionTip),
+				locateButton(stats.stops[nextIndex]),
+				text(stats.stopNames[nextIndex] or "?", "font-scale-body", sectionTip),
+			},
+		},
+	}
 	return builtin.Component{
 		meta = { class = "mls-cargo-types" },
 		layout = builtin.BoxLayout{
 			orientation = builtin.type.Orientation.Vertical,
 			children = {
 				sectionTitle(_("Cargo"),_("Cargo: the types the line's vehicles carry, largest capacity first."), hide),
+				section,
 				builtin.Component{
 					layout = builtin.BoxLayout{
 						orientation = builtin.type.Orientation.Vertical,
@@ -366,11 +498,12 @@ local CargoDetailsContent = react.RegisterRecipe(
 		-- The window can be destroyed without onClose, so reset here too.
 		react.onUnmount(function()
 			openWindows[lineId] = nil
+			unhappyLogged[lineId] = nil
 			luaUtils.debug("cargo window closed for line " .. tostring(lineId))
 		end)
 
 		local statsState = engine_react_util.useStepStateTimer(function() : MlsCargoStats
-			return cargoStatsHelper.collect(lineId, true)
+			return cargoStatsHelper.collect(lineId, true, nil, true)
 		end, REFRESH_SECONDS)
 		local stats = statsState:old()
 
@@ -378,11 +511,14 @@ local CargoDetailsContent = react.RegisterRecipe(
 		local selState = react.useState(1) as ReactStateT<integer>
 		-- The right column is closed until the user opens it (user, 2026-11-11).
 		local showState = react.useState(false) as ReactStateT<boolean>
+		-- The Cargo table's order; kept while the window is open.
+		local sortState = react.useState({ key = "capacity", ascending = false }) as ReactStateT<MlsSortState>
 
 		local message = messageFor(stats)
 		if message ~= nil then
 			return widgets.windowBody("mls-details-narrow", { text(message, "font-scale-body") })
 		end
+		logUnhappyCheck(stats)
 
 		-- Clamp in case the line lost stops since the selection was made.
 		local count = #stats.stops
@@ -431,7 +567,9 @@ local CargoDetailsContent = react.RegisterRecipe(
 		end
 
 		local right = styledColumn("mls-right", {
-			cargoTypesPanel(stats, function() showState:set(false) end),
+			cargoTypesPanel(stats, selected, sortState:old(),
+				function(key : string) sortState:set(listTable.nextSort(sortState:old(), key)) end,
+				function() showState:set(false) end),
 			vehiclesPanel(stats, selected),
 		})
 		return widgets.windowBody("mls-details", { left, right })

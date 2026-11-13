@@ -92,16 +92,14 @@ local function cargoRowOf(stats : MlsCargoStats, balance : integer) : MlsCargoLi
 	if stats.capacity > 0 then
 		pct = math.floor(stats.onBoard * 100 / stats.capacity + 0.5) as integer
 	end
-	-- Waiting over the stops that have a figure; a stop the line calls at
-	-- twice (with the same loads) is counted once, as it is one pile.
-	local waiting = -1
+	-- The per-stop tooltip; a stop the line calls at twice (with the same
+	-- loads) is listed once, as it is one pile. The total is the collector's.
 	local parts : {string} = {}
 	local counted : {string : boolean} = {}
 	for i, stopWaiting in ipairs(stats.stopWaiting) do
 		local stopKey = tostring(stats.stops[i]) .. ":" .. (stats.stopWaitingByType[i] or "")
 		if stopWaiting >= 0 and not counted[stopKey] then
 			counted[stopKey] = true
-			waiting = math.max(waiting, 0) + stopWaiting
 			if stopWaiting > 0 then
 				parts[#parts + 1] = (stats.stopNames[i] or "?") .. ": " .. tostring(stopWaiting)
 			end
@@ -117,7 +115,7 @@ local function cargoRowOf(stats : MlsCargoStats, balance : integer) : MlsCargoLi
 		loadPct = pct,
 		unhappy = stats.unhappy,
 		rate = stats.rate,
-		waiting = waiting,
+		waiting = stats.waiting,
 		waitingByStop = table.concat(parts, "\n"),
 		types = stats.types,
 		journey = stats.journey,

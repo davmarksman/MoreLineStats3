@@ -47,6 +47,21 @@ function data()
 		size = { 396, -1 },
 	})
 
+	-- The side panel's lists (widgets.fixedScrollBox): fixed boxes that
+	-- scroll beyond their rows, so the window keeps its height from stop to
+	-- stop (2026-11-12). Vehicles: four 26 px rows. Competing Lines (Line
+	-- Details; reached through the nested recipe): eight.
+	add("R::" .. recipeName .. " ScrollArea!mls-vehicles-scrollarea", {
+		size = { 412, 108 },
+		minSize = { 412, 108 },
+		maxSize = { 412, 108 },
+	})
+	add("R::" .. recipeName .. " ScrollArea!mls-competing-scrollarea", {
+		size = { 412, 212 },
+		minSize = { 412, 212 },
+		maxSize = { 412, 212 },
+	})
+
 	-- The summary block above the stop list.
 	add("R::" .. recipeName .. " !mls-journey", {
 		margin = { 0, 0, 8, 0 },
@@ -159,6 +174,10 @@ function data()
 		gravity = { 1, 0.5 },
 		margin = { 0, 0, 0, 8 },
 	})
+	-- The "->" between the two stations of the Cargo panel's section line.
+	add("R::MlsCargoDetailsContent !mls-section-arrow", {
+		margin = { 0, 8, 0, 8 },
+	})
 	add("R::MlsCargoDetailsContent !mls-cargo-types", {
 		margin = { 0, 0, 16, 0 },
 	})
@@ -250,8 +269,10 @@ function data()
 	-- stylesheet does), filling the cell so the hover highlight covers it
 	-- like the game's DataTable headers. The icon inside keeps the 20 px
 	-- size without the right-gravity of mls-icon, and the sort arrow is a
-	-- small marker after it.
-	add("R::MlsLinesWindowContent Button!mls-header-btn", {
+	-- small marker after it. Also the sortable Cargo table of Cargo Details
+	-- (list_table's headerRow, 2026-11-12).
+	for _, recipeName in ipairs({ "MlsLinesWindowContent", "MlsCargoDetailsContent" }) do
+	add("R::" .. recipeName .. " Button!mls-header-btn", {
 		padding = { 2, 0, 2, 0 },
 		margin = { 0, 0, 0, 0 },
 		gravity = { -1, -1 },
@@ -261,20 +282,32 @@ function data()
 	})
 	-- Anchor the header content left (Name) or right (numbers); a button
 	-- centres it otherwise. "> *" is the content node inside the button.
-	add("R::MlsLinesWindowContent Button!mls-header-left > *", {
+	add("R::" .. recipeName .. " Button!mls-header-left > *", {
 		gravity = { 0, 0.5 },
 	})
-	add("R::MlsLinesWindowContent Button!mls-header-right > *", {
+	add("R::" .. recipeName .. " Button!mls-header-right > *", {
 		gravity = { 1, 0.5 },
 	})
-	add("R::MlsLinesWindowContent Button!mls-header-btn:hover", {
+	add("R::" .. recipeName .. " Button!mls-header-btn:hover", {
 		backgroundColor = { 1, 1, 1, 0.12 },
 		backgroundColor1 = { 1, 1, 1, 0.12 },
 	})
-	add("R::MlsLinesWindowContent Button!mls-header-btn:active", {
+	add("R::" .. recipeName .. " Button!mls-header-btn:active", {
 		backgroundColor = { 1, 1, 1, 0.2 },
 		backgroundColor1 = { 1, 1, 1, 0.2 },
 	})
+	add("R::" .. recipeName .. " !mls-header-icon", {
+		size = { 20, 20 },
+		minSize = { 20, 20 },
+		maxSize = { 20, 20 },
+	})
+	add("R::" .. recipeName .. " !mls-sort-arrow", {
+		size = { 12, 12 },
+		minSize = { 12, 12 },
+		maxSize = { 12, 12 },
+		margin = { 0, 0, 0, 2 },
+	})
+	end
 	-- Filter row: "All" plus one toggle per vehicle kind, and the search box.
 	-- One row holds the title, the filters, the search box and Refresh
 	-- (2026-11-09; the title had its own row before, and the list grew by
@@ -311,17 +344,6 @@ function data()
 	add("R::MlsLinesWindowContent Button!mls-colour-btn", {
 		padding = { 2, 4, 2, 4 },
 		margin = { 1, 6, 1, 0 },
-	})
-	add("R::MlsLinesWindowContent !mls-header-icon", {
-		size = { 20, 20 },
-		minSize = { 20, 20 },
-		maxSize = { 20, 20 },
-	})
-	add("R::MlsLinesWindowContent !mls-sort-arrow", {
-		size = { 12, 12 },
-		minSize = { 12, 12 },
-		maxSize = { 12, 12 },
-		margin = { 0, 0, 0, 2 },
 	})
 	add("R::MlsLinesWindowContent !mls-lines", {
 		minSize = { 1250, -1 },

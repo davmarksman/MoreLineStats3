@@ -149,6 +149,9 @@ end
 
 local function lineRow(row : MlsLineRow) : TreeNodeId
 	local frequency = row.frequency > 0 and luaUtils.getTimeStr(row.frequency) or "?"
+	-- Each row stays with its line across a sort or filter; the tab is in
+	-- the key because a mixed line has a row in both tabs.
+	local key = "passengers-row-" .. tostring(row.lineId)
 	return widgets.tableRow(COLUMN_WEIGHTS, {
 		listTable.colourButton(row.lineId),
 		listTable.lineName(row.lineId, function(entity : Engine.Entity) lineGui.openLineDetails(entity) end, _("Open Line Details")),
@@ -162,8 +165,8 @@ local function lineRow(row : MlsLineRow) : TreeNodeId
 		num(fmt.distanceStr(row.journey.distance)),
 		num(fmt.speedStr(row.journey)),
 		num(frequency),
-		listTable.money(row.balance),
-	}, "mls-compact-row")
+		listTable.money(row.balance, nil, key .. "-balance"),
+	}, "mls-compact-row", key)
 end
 
 -- The children of the Passengers tab body: the title-and-filter row, header,

@@ -45,9 +45,14 @@ local function text(str : string, class : string, tooltip? : string) : TreeNodeI
 	return builtin.TextView{ meta = { class = class, tooltip = tooltip }, text = str }
 end
 
-local function tableRow(weights : {number}, cells : {TreeNodeId}, class? : string) : TreeNodeId
+-- key: for rows of a list that is re-sorted or filtered. Without one the
+-- game reuses row widgets by position, and a cell whose class or tooltip
+-- differs from the row that was there before lands in the wrong column
+-- (seen in game 2026-11-12: a balance under Freq. after a sort). Unique
+-- within the recipe that builds the list.
+local function tableRow(weights : {number}, cells : {TreeNodeId}, class? : string, key? : string) : TreeNodeId
 	return builtin.Component{
-		meta = { class = class },
+		meta = { class = class, localKey = key },
 		layout = builtin.TableLayout{
 			columnWeights = weights,
 			rows = { builtin.Row{ cells = cells } },
@@ -160,6 +165,29 @@ local function styledColumn(class : string, children : {TreeNodeId}) : TreeNodeI
 			orientation = builtin.type.Orientation.Vertical,
 			children = children,
 		},
+	}
+end
+
+-- A list in the Details windows' side panel (Vehicles, Competing Lines): a
+-- fixed-height box, its size from the class in the stylesheet, that
+-- scrolls when there are more rows, so the window keeps its height from
+-- stop to stop (user, 2026-11-12). A message (empty, loading, error) sits
+-- in the box too. As the station window's list: a ScrollArea rather than a
+-- List (clicks don't highlight rows), its content a fixed width.
+local function fixedScrollBox(class : string, rows : {TreeNodeId}, message : string) : TreeNodeId
+	local children = rows
+	if #children == 0 then children = { text(message, "font-scale-body") } end
+	return builtin.ScrollArea{
+		meta = { class = class },
+		content = builtin.Component{
+			meta = { class = "mls-scroll-content" },
+			layout = builtin.BoxLayout{
+				orientation = builtin.type.Orientation.Vertical,
+				children = children,
+			},
+		},
+		horizontalPolicy = builtin.type.ScrollBarPolicy.AlwaysOff,
+		verticalPolicy = builtin.type.ScrollBarPolicy.AsNeeded,
 	}
 end
 
@@ -289,6 +317,7 @@ local exports : MlsWidgets = {
 	stopLocateButton = stopLocateButton,
 	locateHeading = locateHeading,
 	styledColumn = styledColumn,
+	fixedScrollBox = fixedScrollBox,
 	sectionTitle = sectionTitle,
 	vehiclesCell = vehiclesCell,
 	kindOnLeg = kindOnLeg,

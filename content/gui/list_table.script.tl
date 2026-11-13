@@ -51,9 +51,19 @@ end
 -- A money amount in the game's own format and currency, green or red by its
 -- sign through the game's global "positive" / "negative" classes
 -- (default.css.lua), as the line manager's Balance column is.
-local function money(value : integer, tooltip? : string) : TreeNodeId
+-- key (unique per row within the recipe): the sign is added to it, so a
+-- change of sign builds a new cell. A cell that only changed its class
+-- was put in the wrong column (seen in game 2026-11-12).
+local function money(value : integer, tooltip? : string, key? : string) : TreeNodeId
 	local sign = value < 0 and "negative" or "positive"
-	return text(api.util.formatMoney(value), "font-scale-body, mls-time, " .. sign, tooltip)
+	return builtin.TextView{
+		meta = {
+			class = "font-scale-body, mls-time, " .. sign,
+			tooltip = tooltip,
+			localKey = key ~= nil and (key .. "-" .. sign) or nil,
+		},
+		text = api.util.formatMoney(value),
+	}
 end
 
 -- The colour swatch opens the game's own line window (the "selectEntity"
@@ -218,15 +228,33 @@ end
 -- SORTING
 ------------------------------------------------------------
 
+local NUMBER_WIDTH = 10
+
+-- A name as a sort key: lower case, each run of digits left-padded with
+-- zeros to NUMBER_WIDTH ("line 2" -> "line 0000000002").
+local function nameSortKey(name : string) : string
+	local key = string.gsub(string.lower(name), "%d+", function(digits : string) : string
+		return string.rep("0", NUMBER_WIDTH - #digits) .. digits
+	end)
+	return key
+end
+
 -- The given rows in the chosen order (sorted in place). The name column
--- (no value function) sorts alphabetically; numbers tie-break by name, A to Z.
+-- (no value function) sorts alphabetically, with the numbers in a name by
+-- their value ("Line 2" before "Line 10"); numbers tie-break by name, A to Z.
 local function sortRows<R>(rows : {R}, columns : {MlsColumn<R>}, sort : MlsSortState, nameOf : function(R) : string) : {R}
 	local col = columns[1]
 	for _, candidate in ipairs(columns) do
 		if candidate.key == sort.key then col = candidate end
 	end
+	-- One key per row, built once: the name in lower case with every run of
+	-- digits padded with zeros to the same width, so text order is number order.
+	local nameKeys : {R : string} = {}
+	for _, row in ipairs(rows) do
+		nameKeys[row] = nameSortKey(nameOf(row))
+	end
 	local function byName(rowA : R, rowB : R) : boolean
-		return string.lower(nameOf(rowA)) < string.lower(nameOf(rowB))
+		return nameKeys[rowA] < nameKeys[rowB]
 	end
 	table.sort(rows, function(rowA : R, rowB : R) : boolean
 		if col.value == nil then

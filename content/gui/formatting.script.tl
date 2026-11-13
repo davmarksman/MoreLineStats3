@@ -149,6 +149,18 @@ local function delayedTooltip() : string
 	return nGetText("Delayed Delivery", "Delayed Deliveries", 2)
 end
 
+-- A cargo line's Waiting figure (Cargo tab column, Cargo Details summary
+-- and Cargo table, line-window card).
+local function cargoWaitingTooltip() : string
+	return _("Waiting: the cargo this line loads, in the stocks of the industries and warehouses its stops reach.") .. "\n"
+		.. _("Shared with every line that reaches them.")
+end
+
+-- A Waiting figure as text; -1 (no stop reaches a stock) is "-".
+local function waitingStr(waiting : integer) : string
+	return waiting >= 0 and tostring(waiting) or "-"
+end
+
 -- "Could not read: <error>", for every window's error message.
 local function couldNotRead(err : any) : string
 	return lang_util.format(_("Could not read: {error}"), { error = tostring(err) })
@@ -158,6 +170,8 @@ local exports : MlsFormatting = {
 	couldNotRead = couldNotRead,
 	loadCapacityTooltip = loadCapacityTooltip,
 	delayedTooltip = delayedTooltip,
+	cargoWaitingTooltip = cargoWaitingTooltip,
+	waitingStr = waitingStr,
 	legTimeStr = legTimeStr,
 	legTooltip = legTooltip,
 	distanceStr = distanceStr,

@@ -28,7 +28,8 @@ local num, iconNum = listTable.num, listTable.iconNum
 -- balance. Same row width as the Passengers tab (mls.css.lua); weights are
 -- relative. Waiting (2026-11-11) took 1.2 from Name and 0.5 each from
 -- Length and Speed, so the others keep their width.
-local COLUMN_WEIGHTS : {number} = { 0.8, 5.65, 2.6, 2.5, 2.6, 2.2, 2.4, 2.2, 2, 2.5, 2, 2, 2, 3.15 }
+-- Speed (2026-11-13) took 0.3 from Vehicles: "km/h" was cropped.
+local COLUMN_WEIGHTS : {number} = { 0.8, 5.65, 2.6, 2.5, 2.6, 2.2, 2.4, 2.2, 1.7, 2.5, 2, 2.3, 2, 3.15 }
 
 local ICON_UNHAPPY : string = "::/gui/main/icons/symbol_emote_sad_colored.tga"
 
@@ -72,8 +73,7 @@ local function cargoColumns() : {MlsColumn<MlsCargoLineRow>}
 		{ key = "loadPct", label = _("Utilization"), tooltip = _("Utilization"),
 			value = function(row : MlsCargoLineRow) : number return row.loadPct end },
 		{ key = "waiting", label = _("Waiting"),
-			tooltip = _("Waiting: the cargo this line loads, in the stocks of the industries and warehouses its stops reach.") .. "\n"
-				.. _("Shared with every line that reaches them."),
+			tooltip = fmt.cargoWaitingTooltip(),
 			value = function(row : MlsCargoLineRow) : number return row.waiting end },
 		{ key = "unhappy", iconPath = ICON_UNHAPPY, tooltip = fmt.delayedTooltip(),
 			value = function(row : MlsCargoLineRow) : number return row.unhappy end },
@@ -94,8 +94,11 @@ local function cargoColumns() : {MlsColumn<MlsCargoLineRow>}
 	}
 end
 
-local function lineRow(row : MlsCargoLineRow) : TreeNodeId
+local function lineRow(row : MlsCargoLineRow, waitingTip : string) : TreeNodeId
 	local frequency = row.frequency > 0 and luaUtils.getTimeStr(row.frequency) or "?"
+	-- Each row stays with its line across a sort or filter; the tab is in
+	-- the key because a mixed line has a row in both tabs.
+	local key = "cargo-row-" .. tostring(row.lineId)
 	return widgets.tableRow(COLUMN_WEIGHTS, {
 		listTable.colourButton(row.lineId),
 		listTable.lineName(row.lineId, function(entity : Engine.Entity) cargoGui.openCargoDetails(entity) end, _("Open Cargo Details")),
@@ -104,7 +107,9 @@ local function lineRow(row : MlsCargoLineRow) : TreeNodeId
 		num(row.capacity > 0 and (tostring(row.loadPct) .. "%") or "?"),
 		-- "-" when no stop loads from an industry or warehouse; the tooltip
 		-- splits it by stop (station names and numbers, nothing to translate).
-		num(row.waiting >= 0 and tostring(row.waiting) or "-", row.waitingByStop ~= "" and row.waitingByStop or nil),
+		-- Always a tooltip (the column's own without a split): a cell with
+		-- one is a different kind of node from a cell without.
+		num(row.waiting >= 0 and tostring(row.waiting) or "-", row.waitingByStop ~= "" and row.waitingByStop or waitingTip),
 		iconNum(ICON_UNHAPPY, tostring(row.unhappy)),
 		num(tostring(row.rate)),
 		num(tostring(row.numVehicles)),
@@ -112,8 +117,8 @@ local function lineRow(row : MlsCargoLineRow) : TreeNodeId
 		num(fmt.distanceStr(row.journey.distance)),
 		num(fmt.speedStr(row.journey)),
 		num(frequency),
-		listTable.money(row.balance),
-	}, "mls-compact-row")
+		listTable.money(row.balance, nil, key .. "-balance"),
+	}, "mls-compact-row", key)
 end
 
 local function body(linesTable : MlsCargoLinesTable, view : MlsListView) : {TreeNodeId}
@@ -150,8 +155,9 @@ local function body(linesTable : MlsCargoLinesTable, view : MlsListView) : {Tree
 			view.filter, view.onKind, view.onSearch, view.refresh)
 		children[2] = listTable.headerRow(COLUMN_WEIGHTS, columns, view.sort, view.onSort)
 		local rows : {TreeNodeId} = {}
+		local waitingTip = fmt.cargoWaitingTooltip()
 		for _, row in ipairs(listTable.sortRows(shown, columns, view.sort, nameOf)) do
-			rows[#rows + 1] = lineRow(row)
+			rows[#rows + 1] = lineRow(row, waitingTip)
 		end
 		children[3] = listTable.scrollList("cargo", rows, _("No line matches the filter."))
 	end

@@ -60,8 +60,13 @@ local function emptyStats(lineId : Engine.Entity, kind : string) : MlsCargoStats
 		stopLoads = {},
 		stopWaiting = {},
 		stopWaitingByType = {},
+		waiting = -1,
 		legLoad = {},
 		legLoadByType = {},
+		legTypeLoad = {},
+		legTypeUnhappy = {},
+		sectionUnhappyRead = false,
+		stopTypeWaiting = {},
 		legVehicles = {},
 		legAtStation = {},
 		legVehicleNames = {},
@@ -222,15 +227,22 @@ end
 
 -- Per stop, the Waiting figure and its per-type tooltip lines (-1 / "" =
 -- no figure: the stop loads none of the line's types or reaches no stock).
+-- Also the line's total and each carried type's total (stats.waiting,
+-- types[].waiting), where a station group the line calls at twice adds its
+-- pile of a type once.
 local function readStopWaiting(stats : MlsCargoStats, waitingCache : MlsWaitingCache)
 	-- A line can call at the same station group twice, and the Cargo tab's
 	-- lines share stations: read each once per set of types (the cache is
 	-- the caller's, never module state).
 	local cache = waitingCache.counts
 	local reachesCache = waitingCache.reaches
+	local typeById : {integer : MlsCargoType} = {}
+	for _, cargoType in ipairs(stats.types) do typeById[cargoType.id] = cargoType end
+	local counted : {string : boolean} = {}
 	for i, stationGroup in ipairs(stats.stops) do
 		stats.stopWaiting[i] = -1
 		stats.stopWaitingByType[i] = ""
+		stats.stopTypeWaiting[i] = {}
 		local ids : {integer} = {}
 		for _, cargoType in ipairs(stats.stopLoads[i] or {}) do
 			if cargoType.capacity > 0 then ids[#ids + 1] = cargoType.id end
@@ -253,6 +265,14 @@ local function readStopWaiting(stats : MlsCargoStats, waitingCache : MlsWaitingC
 						total = total + count
 						parts[#parts + 1] = tostring(count) .. " " .. cargoType.name
 					end
+					local lineType = typeById[cargoType.id]
+					if lineType ~= nil then stats.stopTypeWaiting[i][cargoType.id] = count or 0 end
+					local pileKey = tostring(stationGroup) .. ":" .. tostring(cargoType.id)
+					if lineType ~= nil and not counted[pileKey] then
+						counted[pileKey] = true
+						lineType.waiting = math.max(lineType.waiting, 0) + (count or 0)
+						stats.waiting = math.max(stats.waiting, 0) + (count or 0)
+					end
 				end
 				stats.stopWaiting[i] = total
 				stats.stopWaitingByType[i] = table.concat(parts, "\n")
@@ -261,7 +281,7 @@ local function readStopWaiting(stats : MlsCargoStats, waitingCache : MlsWaitingC
 	end
 end
 
-local function collectUnsafe(lineId : Engine.Entity, withWaiting : boolean, cache : MlsWaitingCache) : MlsCargoStats
+local function collectUnsafe(lineId : Engine.Entity, withWaiting : boolean, cache : MlsWaitingCache, withSections : boolean) : MlsCargoStats
 	if lineId == nil or not api.engine.entityExists(lineId) then
 		return emptyStats(lineId, "missing")
 	end
@@ -298,6 +318,7 @@ local function collectUnsafe(lineId : Engine.Entity, withWaiting : boolean, cach
 			onBoard = used[id],
 			capacity = caps[id],
 			unhappy = bad,
+			waiting = -1,
 		}
 		stats.onBoard = stats.onBoard + used[id]
 		stats.capacity = stats.capacity + caps[id]
@@ -317,17 +338,35 @@ local function collectUnsafe(lineId : Engine.Entity, withWaiting : boolean, cach
 	-- counts are kept per vehicle for the per-leg breakdown below.
 	local atVehicle = api.engine.system.simEntityAtVehicleSystem
 	local perVehicle : {Engine.Entity : {integer : integer}} = {}
+	-- withSections: of each type on board, how many the game counts as bad,
+	-- per vehicle (getCargoQualityDataForVehicle; first used here 2026-11-12,
+	-- the base game's scripts never call it). Asked only for types on board.
+	local perVehicleBad : {Engine.Entity : {integer : integer}} = {}
+	local unhappyRead = withSections
 	local function cargoLoadOf(vehicleId : Engine.Entity, transportVehicle : Engine.Component.TransportVehicle) : integer, integer
 		local vcaps = transportVehicle.config ~= nil and transportVehicle.config.capacities or nil
 		local byType : {integer : integer} = {}
+		local badByType : {integer : integer} = {}
 		local onBoard, capacity = 0, 0
 		for _, id in ipairs(ids) do
 			local count = atVehicle.getVehicleSimEntitiesCountForCargoType(vehicleId, id as CargoTypeId) or 0
-			if count > 0 then byType[id] = count end
+			if count > 0 then
+				byType[id] = count
+				if withSections then
+					local ok, quality = pcall(cargoUtil.getCargoQualityDataForVehicle, vehicleId, id as CargoTypeId)
+					if ok and quality ~= nil then
+						local bad = (quality as UtilCargo.CargoQualityData).countBad or 0
+						if bad > 0 then badByType[id] = bad end
+					else
+						unhappyRead = false
+					end
+				end
+			end
 			onBoard = onBoard + count
 			capacity = capacity + (vcaps ~= nil and (vcaps[id + 1] or 0) or 0)
 		end
 		perVehicle[vehicleId] = byType
+		perVehicleBad[vehicleId] = badByType
 		return onBoard, capacity
 	end
 	local vehicleLegs = lineStatsHelper.readVehicles(lineId, stopCount, cargoLoadOf)
@@ -343,13 +382,20 @@ local function collectUnsafe(lineId : Engine.Entity, withWaiting : boolean, cach
 		stats.legLoad[i] = 0
 		stats.legLoadByType[i] = ""
 		legByType[i] = {}
+		stats.legTypeUnhappy[i] = {}
 	end
 	for _, vehicle in ipairs(stats.vehicles) do
 		stats.legLoad[vehicle.leg] = stats.legLoad[vehicle.leg] + vehicle.load
 		for id, count in pairs(perVehicle[vehicle.id] or {}) do
 			legByType[vehicle.leg][id] = (legByType[vehicle.leg][id] or 0) + count
 		end
+		local legBad = stats.legTypeUnhappy[vehicle.leg]
+		for id, bad in pairs(perVehicleBad[vehicle.id] or {}) do
+			legBad[id] = (legBad[id] or 0) + bad
+		end
 	end
+	stats.legTypeLoad = legByType
+	stats.sectionUnhappyRead = unhappyRead
 	for i = 1, stopCount do
 		local parts : {string} = {}
 		for _, id in ipairs(ids) do
@@ -362,8 +408,8 @@ local function collectUnsafe(lineId : Engine.Entity, withWaiting : boolean, cach
 end
 
 -- Never throws: an error in one line must not break the window.
-local function collect(lineId : Engine.Entity, withWaiting? : boolean, cache? : MlsWaitingCache) : MlsCargoStats
-	local ok, result = pcall(collectUnsafe, lineId, withWaiting == true, cache)
+local function collect(lineId : Engine.Entity, withWaiting? : boolean, cache? : MlsWaitingCache, withSections? : boolean) : MlsCargoStats
+	local ok, result = pcall(collectUnsafe, lineId, withWaiting == true, cache, withSections == true)
 	if ok then return result as MlsCargoStats end
 	local stats = emptyStats(lineId, "error")
 	stats.error = tostring(result)
