@@ -130,7 +130,7 @@ local function byTime(lineA : MlsCompetingLine, lineB : MlsCompetingLine) : bool
 end
 
 local function emptyResult() : MlsCompeting
-	return { fromStationGroup = nil, fromName = "?", destinations = {} }
+	return { destinations = {} }
 end
 
 local function getCompetingUnsafe(lineId : Engine.Entity, stopIndex : integer) : MlsCompeting
@@ -143,8 +143,6 @@ local function getCompetingUnsafe(lineId : Engine.Entity, stopIndex : integer) :
 	if stopCount < 2 or stopIndex == nil or stopIndex < 1 or stopIndex > stopCount then return result end
 
 	local from : Engine.Entity = this.stops[stopIndex]
-	result.fromStationGroup = from
-	result.fromName = entityName(from)
 
 	local lineSystem = api.engine.system.lineSystem
 	local playerLines = toSet(lineSystem.getLinesForPlayer(api.engine.util.getPlayer()))

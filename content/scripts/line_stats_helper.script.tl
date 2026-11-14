@@ -48,7 +48,6 @@ local function emptyStats(lineId : Engine.Entity, kind : string) : MlsLineStats
 		unhappyOnBoard = 0,
 		legVehicles = {},
 		legAtStation = {},
-		legVehicleNames = {},
 		vehicles = {},
 		carrier = "other",
 	}
@@ -112,12 +111,11 @@ end
 local function readVehicles(lineId : Engine.Entity, stopCount : integer,
 		loadOf : function(Engine.Entity, Engine.Component.TransportVehicle) : integer, integer) : MlsVehicleLegs
 	local vehicleLegs : MlsVehicleLegs = {
-		vehicles = {}, legVehicles = {}, legAtStation = {}, legVehicleNames = {}, carrier = "other",
+		vehicles = {}, legVehicles = {}, legAtStation = {}, carrier = "other",
 	}
 	for i = 1, stopCount do
 		vehicleLegs.legVehicles[i] = 0
 		vehicleLegs.legAtStation[i] = 0
-		vehicleLegs.legVehicleNames[i] = ""
 	end
 	if stopCount == 0 then return vehicleLegs end
 	local states = api.type.enum.TransportVehicleState
@@ -141,11 +139,8 @@ local function readVehicles(lineId : Engine.Entity, stopCount : integer,
 			vehicleLegs.vehicles[#vehicleLegs.vehicles + 1] = vehicle
 			if #vehicleLegs.vehicles == 1 then vehicleLegs.carrier = vehicle.kind end
 
-			local name = vehicle.name .. (atStation and " (at station)" or "")
 			vehicleLegs.legVehicles[leg] = vehicleLegs.legVehicles[leg] + 1
 			if atStation then vehicleLegs.legAtStation[leg] = vehicleLegs.legAtStation[leg] + 1 end
-			vehicleLegs.legVehicleNames[leg] = vehicleLegs.legVehicleNames[leg] == "" and name
-				or (vehicleLegs.legVehicleNames[leg] .. "\n" .. name)
 		end
 	end
 	return vehicleLegs
@@ -163,7 +158,6 @@ local function fillVehicles(stats : MlsLineStats, lineId : Engine.Entity)
 	stats.vehicles = vehicleLegs.vehicles
 	stats.legVehicles = vehicleLegs.legVehicles
 	stats.legAtStation = vehicleLegs.legAtStation
-	stats.legVehicleNames = vehicleLegs.legVehicleNames
 	stats.carrier = vehicleLegs.carrier
 end
 

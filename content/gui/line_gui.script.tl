@@ -49,12 +49,14 @@ local WINDOW_KIND : string = "lineDetails"
 
 -- Widget helpers shared with the Cargo Details window (gui/widgets.script.tl).
 local text, tableRow, icon, iconCell = widgets.text, widgets.tableRow, widgets.icon, widgets.iconCell
-local locateButton, stopLocateButton, locateHeading = widgets.locateButton, widgets.stopLocateButton, widgets.locateHeading
+local stopLocateButton, locateHeading = widgets.stopLocateButton, widgets.locateHeading
 local styledColumn, sectionTitle, vehiclesCell = widgets.styledColumn, widgets.sectionTitle, widgets.vehiclesCell
+local vehicleRow = widgets.vehicleRow
 
 -- Text and tooltip builders (gui/formatting.script.tl).
 local legTimeStr, legTooltip, distanceStr, speedStr = fmt.legTimeStr, fmt.legTooltip, fmt.distanceStr, fmt.speedStr
 local journeyTooltip, demandStr = fmt.journeyTooltip, fmt.demandStr
+local distanceTooltip, speedTooltip = fmt.distanceTooltip, fmt.speedTooltip
 local competingTimeStr, competingTimeTooltip = fmt.competingTimeStr, fmt.competingTimeTooltip
 local differenceStr, differenceTooltip, isFaster = fmt.differenceStr, fmt.differenceTooltip, fmt.isFaster
 
@@ -69,8 +71,6 @@ local COMPETING_REFRESH_SECONDS : number = 10.0
 local STOP_COLUMN_WEIGHTS : {number} = { 2, 6, 2, 2, 2, 2, 3, 3, 3 }
 -- Competing lines: time, colour, line, difference.
 local COMPETING_COLUMN_WEIGHTS : {number} = { 2, 1, 5, 3 }
--- Vehicles on the selected leg: pin, name, load, where.
-local VEHICLE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 3 }
 -- Summary: Demand, Load/capacity, Waiting, Unhappy, Length, Frequency, Journey.
 local SUMMARY_COLUMN_WEIGHTS : {number} = { 3, 2, 2, 2, 2, 2, 2 }
 -- Line-window card, passenger line: Demand, Waiting, Unhappy, Length,
@@ -115,12 +115,6 @@ end
 -- The stop list's header and cell sentences.
 local function stopDemandTooltip() : string
 	return _("Demand: passengers travelling between this stop and the next one on this line now (waiting + on board).")
-end
-local function distanceTooltip() : string
-	return _("Distance to the next stop as the crow flies.")
-end
-local function speedTooltip() : string
-	return _("Speed: average speed to the next stop, crow-flies distance over driving time where known.")
 end
 
 ------------------------------------------------------------
@@ -291,16 +285,6 @@ end
 ------------------------------------------------------------
 -- VEHICLES ON THE SELECTED LEG (right, above the competing lines)
 ------------------------------------------------------------
-
--- "<pin> <name>  12/96  <station or arrow icon>". The pin follows the vehicle.
-local function vehicleRow(vehicle : MlsVehicle) : TreeNodeId
-	return tableRow(VEHICLE_COLUMN_WEIGHTS, {
-		locateButton(vehicle.id),
-		widgets.vehicleName(vehicle.id, vehicle.name),
-		text(tostring(vehicle.load) .. "/" .. tostring(vehicle.capacity), "font-scale-body, mls-time", _("On board / capacity.")),
-		widgets.whereIcon(vehicle.atStation),
-	}, "mls-compact-row")
-end
 
 -- The vehicles between the selected stop and the next one. Reads the same
 -- 5 s data as the stop list, so no timer of its own. Not scrolled: a leg
@@ -558,16 +542,17 @@ end
 -- LINE WINDOW CARD
 ------------------------------------------------------------
 
--- The card's figures: the passenger collector for every line, and the
--- cargo collector too, with Waiting, for a cargo line (about a millisecond
--- each). Timer thread: engine reads only, plain tables out.
 -- The card's own, narrower passenger test: the line has passenger capacity
--- in use or passengers waiting. A line that is "passenger" only because a
--- vehicle is configured for passengers gets the cargo row (if it has cargo).
+-- or passengers waiting. A line that is "passenger" only because a vehicle
+-- is configured for passengers gets the cargo row (if it has cargo).
 local function cardShowsPassengers(passenger : MlsLineStats) : boolean
 	return passenger.kind == "passenger" and (passenger.capacity > 0 or passenger.waitingTotal > 0)
 end
 
+-- The card's figures: the passenger collector for every line, and the
+-- cargo collector too, with Waiting, for a line that gets no passenger row
+-- (about a millisecond each). Timer thread: engine reads only, plain tables
+-- out.
 local function collectCard(lineId : Engine.Entity) : MlsCardStats
 	local passenger = lineStatsHelper.collect(lineId)
 	local cargo : MlsCargoStats = nil

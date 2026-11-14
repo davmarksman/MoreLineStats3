@@ -248,6 +248,19 @@ local function whereIcon(atStation : boolean) : TreeNodeId
 	return icon(atStation and ICON_AT_STATION or ICON_EN_ROUTE, atStation and _("At Terminal") or _("En route"))
 end
 
+-- A row of the Details windows' Vehicles list: pin, name, load, where.
+local VEHICLE_COLUMN_WEIGHTS : {number} = { 1, 5, 3, 3 }
+
+-- "<pin> <name>  12/96  <station or arrow icon>". The pin follows the vehicle.
+local function vehicleRow(vehicle : MlsVehicle) : TreeNodeId
+	return tableRow(VEHICLE_COLUMN_WEIGHTS, {
+		locateButton(vehicle.id),
+		vehicleName(vehicle.id, vehicle.name),
+		text(tostring(vehicle.load) .. "/" .. tostring(vehicle.capacity), "font-scale-body, mls-time", _("On board / capacity.")),
+		whereIcon(vehicle.atStation),
+	}, "mls-compact-row")
+end
+
 -- The window body: a horizontal row of columns inside a styled Component,
 -- which carries the minimum width (without it the window shrinks until the
 -- text is cut off).
@@ -323,8 +336,10 @@ local exports : MlsWidgets = {
 	kindOnLeg = kindOnLeg,
 	whereIcon = whereIcon,
 	windowBody = windowBody,
+	cargoIcon = cargoIcon,
 	cargoTypesCell = cargoTypesCell,
 	manageLineButton = manageLineButton,
 	vehicleName = vehicleName,
+	vehicleRow = vehicleRow,
 }
 return exports

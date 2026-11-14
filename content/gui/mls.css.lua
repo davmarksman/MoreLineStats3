@@ -252,6 +252,17 @@ function data()
 	add("R::MlsLinesWindowContent TabWidget!mls-lines-tabs TabWidget::Content", {
 		visibility = "none",
 	})
+	-- The selected tab stands out: the game's default differs only by a
+	-- slightly lighter surface (shadowColor BaseLight against BaseMedium),
+	-- so the selected one takes the accent blue of the primary buttons and
+	-- the other's label is greyed. Hover and press keep the game's colours.
+	local colorDefault = api.gui.genericRep.get(api.gui.genericRep.find("::/gui/main/default_colors.gres")).data
+	add("R::MlsLinesWindowContent TabWidget!mls-lines-tabs TabWidget::Indicator!checked", {
+		shadowColor = colorDefault.AccentMedium,
+	})
+	add("R::MlsLinesWindowContent TabWidget!mls-lines-tabs TabWidget::Indicator!unchecked TextView", {
+		color = colorDefault.NeutralLight,
+	})
 	-- Cargo tab: the type icons in the Cargo column (the same classes as the
 	-- Loads cell of Cargo Details; selectors are per window recipe).
 	add("R::MlsLinesWindowContent !mls-cargo-icon", {

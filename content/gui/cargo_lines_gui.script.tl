@@ -66,7 +66,7 @@ end
 local function cargoColumns() : {MlsColumn<MlsCargoLineRow>}
 	return {
 		{ key = "name", label = _("Name"), tooltip = _("Open Cargo Details") },
-		{ key = "types", label = _("Cargo"), tooltip = _("Cargo: the types the line's vehicles carry, largest capacity first."),
+		{ key = "types", label = _("Cargo"), tooltip = fmt.loadsTooltip(),
 			value = function(row : MlsCargoLineRow) : number return #row.types end },
 		{ key = "load", label = pGetText("noun", "Load"), tooltip = fmt.loadCapacityTooltip(),
 			value = function(row : MlsCargoLineRow) : number return row.onBoard end },
@@ -102,7 +102,7 @@ local function lineRow(row : MlsCargoLineRow, waitingTip : string) : TreeNodeId
 	return widgets.tableRow(COLUMN_WEIGHTS, {
 		listTable.colourButton(row.lineId),
 		listTable.lineName(row.lineId, function(entity : Engine.Entity) cargoGui.openCargoDetails(entity) end, _("Open Cargo Details")),
-		widgets.cargoTypesCell(row.types, _("Cargo") .. ":", _("No cargo capacity")),
+		widgets.cargoTypesCell(row.types, _("Cargo") .. ":", _("No stop is set to load cargo.")),
 		num(tostring(row.onBoard) .. "/" .. tostring(row.capacity)),
 		num(row.capacity > 0 and (tostring(row.loadPct) .. "%") or "?"),
 		-- "-" when no stop loads from an industry or warehouse; the tooltip

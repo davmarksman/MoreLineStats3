@@ -62,9 +62,8 @@
 		"No cargo is loaded at this stop." : "No cargo is loaded at this stop.",
 		"The fullest section of this line." : "The fullest section of this line.",
 		"Rate: the game's own line rate." : "Rate: the game's own line rate.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Cargo: the types the line's vehicles carry, largest capacity first.",
 		"Loads" : "Loads",
-		"Loads: the cargo types this stop is set to load onto the line." : "Loads: the cargo types this stop is set to load onto the line.",
+		"The cargo set to load in the line's stop settings." : "The cargo set to load in the line's stop settings.",
 		"The fullest section is highlighted." : "The fullest section is highlighted.",
 		"Cargo Details: {name}" : "Cargo Details: {name}",
 		"This station no longer exists." : "This station no longer exists.",
@@ -94,7 +93,7 @@
 		"Lines that carry cargo, mixed lines included." : "Lines that carry cargo, mixed lines included.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: statistics for all of your passenger and cargo lines.",
 		"Vehicles: the number of vehicles on the line." : "Vehicles: the number of vehicles on the line.",
-		"No cargo capacity" : "No cargo capacity"
+		"No stop is set to load cargo." : "No stop is set to load cargo."
 	},
 	"de" : {
 		"{drive} driving, {atStations} at stations" : "{drive} Fahrt, {atStations} an Stationen",
@@ -159,9 +158,8 @@
 		"No cargo is loaded at this stop." : "An dieser Haltestelle wird keine Fracht geladen.",
 		"The fullest section of this line." : "Der vollste Abschnitt dieser Linie.",
 		"Rate: the game's own line rate." : "Rate: die Linienrate des Spiels.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Fracht: die Arten, die die Fahrzeuge der Linie befördern, größte Kapazität zuerst.",
 		"Loads" : "Lädt",
-		"Loads: the cargo types this stop is set to load onto the line." : "Lädt: die Frachtarten, die diese Haltestelle auf die Linie laden soll.",
+		"The cargo set to load in the line's stop settings." : "Die Fracht, die laut den Haltestelleneinstellungen der Linie geladen werden soll.",
 		"The fullest section is highlighted." : "Der vollste Abschnitt ist hervorgehoben.",
 		"Cargo Details: {name}" : "Frachtdetails: {name}",
 		"This station no longer exists." : "Diese Station existiert nicht mehr.",
@@ -191,7 +189,7 @@
 		"Lines that carry cargo, mixed lines included." : "Linien, die Fracht befördern, gemischte Linien eingeschlossen.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: Statistiken für alle deine Passagier- und Frachtlinien.",
 		"Vehicles: the number of vehicles on the line." : "Fahrzeuge: die Anzahl der Fahrzeuge auf der Linie.",
-		"No cargo capacity" : "Keine Frachtkapazität"
+		"No stop is set to load cargo." : "Keine Haltestelle soll Fracht laden."
 	},
 	"nl" : {
 		"{drive} driving, {atStations} at stations" : "{drive} rijden, {atStations} op stations",
@@ -256,9 +254,8 @@
 		"No cargo is loaded at this stop." : "Bij deze halte wordt geen vracht geladen.",
 		"The fullest section of this line." : "Het volste traject van deze lijn.",
 		"Rate: the game's own line rate." : "Tempo: het lijntempo volgens het spel.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Vracht: de soorten die de voertuigen van de lijn vervoeren, grootste capaciteit eerst.",
 		"Loads" : "Laadt",
-		"Loads: the cargo types this stop is set to load onto the line." : "Laadt: de vrachtsoorten die deze halte op de lijn moet laden.",
+		"The cargo set to load in the line's stop settings." : "De vracht die volgens de halte-instellingen van de lijn geladen moet worden.",
 		"The fullest section is highlighted." : "Het volste traject is gemarkeerd.",
 		"Cargo Details: {name}" : "Vrachtdetails: {name}",
 		"This station no longer exists." : "Dit station bestaat niet meer.",
@@ -288,7 +285,7 @@
 		"Lines that carry cargo, mixed lines included." : "Lijnen die vracht vervoeren, gemengde lijnen inbegrepen.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: statistieken voor al je passagiers- en vrachtlijnen.",
 		"Vehicles: the number of vehicles on the line." : "Voertuigen: het aantal voertuigen op de lijn.",
-		"No cargo capacity" : "Geen vrachtcapaciteit"
+		"No stop is set to load cargo." : "Geen halte moet vracht laden."
 	},
 	"fr" : {
 		"{drive} driving, {atStations} at stations" : "{drive} en route, {atStations} en gare",
@@ -353,9 +350,8 @@
 		"No cargo is loaded at this stop." : "Aucun fret n'est chargé à cet arrêt.",
 		"The fullest section of this line." : "Le tronçon le plus rempli de cette ligne.",
 		"Rate: the game's own line rate." : "Débit : le débit de la ligne selon le jeu.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Fret : les types transportés par les véhicules de la ligne, plus grande capacité d'abord.",
 		"Loads" : "Charge",
-		"Loads: the cargo types this stop is set to load onto the line." : "Charge : les types de fret que cet arrêt doit charger sur la ligne.",
+		"The cargo set to load in the line's stop settings." : "Le fret à charger selon les réglages des arrêts de la ligne.",
 		"The fullest section is highlighted." : "Le tronçon le plus rempli est mis en évidence.",
 		"Cargo Details: {name}" : "Détails du fret : {name}",
 		"This station no longer exists." : "Cette gare n'existe plus.",
@@ -385,7 +381,7 @@
 		"Lines that carry cargo, mixed lines included." : "Lignes transportant du fret, lignes mixtes comprises.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats : statistiques de toutes vos lignes de passagers et de fret.",
 		"Vehicles: the number of vehicles on the line." : "Véhicules : le nombre de véhicules sur la ligne.",
-		"No cargo capacity" : "Aucune capacité fret"
+		"No stop is set to load cargo." : "Aucun arrêt ne doit charger de fret."
 	},
 	"es" : {
 		"{drive} driving, {atStations} at stations" : "{drive} en marcha, {atStations} en estaciones",
@@ -450,9 +446,8 @@
 		"No cargo is loaded at this stop." : "En esta parada no se carga nada.",
 		"The fullest section of this line." : "El tramo más lleno de esta línea.",
 		"Rate: the game's own line rate." : "Ritmo: el ritmo de la línea según el juego.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Carga: los tipos que transportan los vehículos de la línea, mayor capacidad primero.",
 		"Loads" : "Carga",
-		"Loads: the cargo types this stop is set to load onto the line." : "Carga: los tipos de carga que esta parada debe cargar en la línea.",
+		"The cargo set to load in the line's stop settings." : "La carga que se debe cargar según los ajustes de las paradas de la línea.",
 		"The fullest section is highlighted." : "El tramo más lleno está resaltado.",
 		"Cargo Details: {name}" : "Detalles de carga: {name}",
 		"This station no longer exists." : "Esta estación ya no existe.",
@@ -482,7 +477,7 @@
 		"Lines that carry cargo, mixed lines included." : "Líneas que transportan carga, incluidas las mixtas.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: estadísticas de todas tus líneas de pasajeros y de carga.",
 		"Vehicles: the number of vehicles on the line." : "Vehículos: el número de vehículos de la línea.",
-		"No cargo capacity" : "Sin capacidad de carga"
+		"No stop is set to load cargo." : "Ninguna parada debe cargar carga."
 	},
 	"it" : {
 		"{drive} driving, {atStations} at stations" : "{drive} in marcia, {atStations} in stazione",
@@ -547,9 +542,8 @@
 		"No cargo is loaded at this stop." : "A questa fermata non si caricano merci.",
 		"The fullest section of this line." : "La tratta più piena di questa linea.",
 		"Rate: the game's own line rate." : "Ritmo: il ritmo della linea secondo il gioco.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Merci: i tipi trasportati dai veicoli della linea, capacità maggiore per prima.",
 		"Loads" : "Carica",
-		"Loads: the cargo types this stop is set to load onto the line." : "Carica: i tipi di merce che questa fermata deve caricare sulla linea.",
+		"The cargo set to load in the line's stop settings." : "Le merci da caricare secondo le impostazioni delle fermate della linea.",
 		"The fullest section is highlighted." : "La tratta più piena è evidenziata.",
 		"Cargo Details: {name}" : "Dettagli merci: {name}",
 		"This station no longer exists." : "Questa stazione non esiste più.",
@@ -579,7 +573,7 @@
 		"Lines that carry cargo, mixed lines included." : "Linee che trasportano merci, linee miste incluse.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: statistiche di tutte le tue linee passeggeri e merci.",
 		"Vehicles: the number of vehicles on the line." : "Veicoli: il numero di veicoli sulla linea.",
-		"No cargo capacity" : "Nessuna capacità merci"
+		"No stop is set to load cargo." : "Nessuna fermata deve caricare merci."
 	},
 	"pl" : {
 		"{drive} driving, {atStations} at stations" : "{drive} jazdy, {atStations} na stacjach",
@@ -644,9 +638,8 @@
 		"No cargo is loaded at this stop." : "Na tym przystanku nie ładuje się żadnego ładunku.",
 		"The fullest section of this line." : "Najpełniejszy odcinek tej linii.",
 		"Rate: the game's own line rate." : "Tempo: tempo linii według gry.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Ładunek: rodzaje przewożone przez pojazdy linii, największa pojemność pierwsza.",
 		"Loads" : "Ładuje",
-		"Loads: the cargo types this stop is set to load onto the line." : "Ładuje: rodzaje ładunku, które ten przystanek ma ładować na linię.",
+		"The cargo set to load in the line's stop settings." : "Ładunek, który ma być ładowany według ustawień przystanków linii.",
 		"The fullest section is highlighted." : "Najpełniejszy odcinek jest wyróżniony.",
 		"Cargo Details: {name}" : "Szczegóły ładunku: {name}",
 		"This station no longer exists." : "Ta stacja już nie istnieje.",
@@ -676,7 +669,7 @@
 		"Lines that carry cargo, mixed lines included." : "Linie przewożące ładunek, łącznie z mieszanymi.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: statystyki wszystkich twoich linii pasażerskich i towarowych.",
 		"Vehicles: the number of vehicles on the line." : "Pojazdy: liczba pojazdów na linii.",
-		"No cargo capacity" : "Brak ładowności"
+		"No stop is set to load cargo." : "Żaden przystanek nie ma ładować ładunku."
 	},
 	"pt_BR" : {
 		"{drive} driving, {atStations} at stations" : "{drive} em movimento, {atStations} nas estações",
@@ -741,9 +734,8 @@
 		"No cargo is loaded at this stop." : "Nenhuma carga é carregada nesta parada.",
 		"The fullest section of this line." : "O trecho mais cheio desta linha.",
 		"Rate: the game's own line rate." : "Ritmo: o ritmo da linha segundo o jogo.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Carga: os tipos que os veículos da linha transportam, maior capacidade primeiro.",
 		"Loads" : "Carrega",
-		"Loads: the cargo types this stop is set to load onto the line." : "Carrega: os tipos de carga que esta parada deve carregar na linha.",
+		"The cargo set to load in the line's stop settings." : "A carga a carregar de acordo com as configurações das paradas da linha.",
 		"The fullest section is highlighted." : "O trecho mais cheio está destacado.",
 		"Cargo Details: {name}" : "Detalhes de carga: {name}",
 		"This station no longer exists." : "Esta estação não existe mais.",
@@ -773,7 +765,7 @@
 		"Lines that carry cargo, mixed lines included." : "Linhas que transportam carga, incluindo as mistas.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: estatísticas de todas as suas linhas de passageiros e de carga.",
 		"Vehicles: the number of vehicles on the line." : "Veículos: o número de veículos na linha.",
-		"No cargo capacity" : "Sem capacidade de carga"
+		"No stop is set to load cargo." : "Nenhuma parada deve carregar carga."
 	},
 	"ru" : {
 		"{drive} driving, {atStations} at stations" : "{drive} в пути, {atStations} на станциях",
@@ -838,9 +830,8 @@
 		"No cargo is loaded at this stop." : "На этой остановке груз не грузится.",
 		"The fullest section of this line." : "Самый заполненный участок этой линии.",
 		"Rate: the game's own line rate." : "Темп: темп линии по оценке игры.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "Грузы: виды, которые перевозит транспорт линии, сначала с наибольшей вместимостью.",
 		"Loads" : "Грузит",
-		"Loads: the cargo types this stop is set to load onto the line." : "Грузит: виды грузов, которые эта остановка должна грузить на линию.",
+		"The cargo set to load in the line's stop settings." : "Грузы, которые должны грузиться согласно настройкам остановок линии.",
 		"The fullest section is highlighted." : "Самый заполненный участок выделен.",
 		"Cargo Details: {name}" : "Сведения о грузах: {name}",
 		"This station no longer exists." : "Этой станции больше нет.",
@@ -870,7 +861,7 @@
 		"Lines that carry cargo, mixed lines included." : "Линии, перевозящие грузы, включая смешанные.",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: статистика всех ваших пассажирских и грузовых линий.",
 		"Vehicles: the number of vehicles on the line." : "Транспорт: число единиц транспорта на линии.",
-		"No cargo capacity" : "Нет грузовместимости"
+		"No stop is set to load cargo." : "Ни одна остановка не должна грузить грузы."
 	},
 	"ja" : {
 		"{drive} driving, {atStations} at stations" : "走行 {drive}、駅で {atStations}",
@@ -935,9 +926,8 @@
 		"No cargo is loaded at this stop." : "この停留所では貨物を積み込みません。",
 		"The fullest section of this line." : "この路線で最も満載の区間。",
 		"Rate: the game's own line rate." : "輸送量：ゲームによる路線の輸送量。",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "貨物：路線の車両が運ぶ種類（容量の大きい順）。",
 		"Loads" : "積み込み",
-		"Loads: the cargo types this stop is set to load onto the line." : "積み込み：この停留所で路線に積み込むよう設定された貨物の種類。",
+		"The cargo set to load in the line's stop settings." : "路線の停留所設定で積み込むよう設定された貨物。",
 		"The fullest section is highlighted." : "最も満載の区間を強調表示しています。",
 		"Cargo Details: {name}" : "貨物の詳細：{name}",
 		"This station no longer exists." : "この駅はもう存在しません。",
@@ -967,7 +957,7 @@
 		"Lines that carry cargo, mixed lines included." : "貨物を運ぶ路線（混合路線を含む）。",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats：すべての旅客・貨物路線の統計。",
 		"Vehicles: the number of vehicles on the line." : "車両：路線の車両数。",
-		"No cargo capacity" : "貨物容量なし"
+		"No stop is set to load cargo." : "貨物を積み込む設定の停留所がありません。"
 	},
 	"ko" : {
 		"{drive} driving, {atStations} at stations" : "운행 {drive}, 역 정차 {atStations}",
@@ -1032,9 +1022,8 @@
 		"No cargo is loaded at this stop." : "이 정류장에서는 화물을 적재하지 않습니다.",
 		"The fullest section of this line." : "이 노선에서 가장 가득 찬 구간.",
 		"Rate: the game's own line rate." : "운송률: 게임이 계산한 노선 운송률.",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "화물: 노선 차량이 운송하는 종류(수용력 큰 순).",
 		"Loads" : "적재",
-		"Loads: the cargo types this stop is set to load onto the line." : "적재: 이 정류장에서 노선에 싣도록 설정된 화물 종류.",
+		"The cargo set to load in the line's stop settings." : "노선의 정류장 설정에서 싣도록 설정된 화물.",
 		"The fullest section is highlighted." : "가장 가득 찬 구간이 강조 표시됩니다.",
 		"Cargo Details: {name}" : "화물 상세: {name}",
 		"This station no longer exists." : "이 역은 더 이상 존재하지 않습니다.",
@@ -1064,7 +1053,7 @@
 		"Lines that carry cargo, mixed lines included." : "화물을 운송하는 노선(혼합 노선 포함).",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats: 모든 여객 및 화물 노선의 통계.",
 		"Vehicles: the number of vehicles on the line." : "차량: 노선의 차량 수.",
-		"No cargo capacity" : "화물 수용력 없음"
+		"No stop is set to load cargo." : "화물을 싣도록 설정된 정류장이 없습니다."
 	},
 	"zh_CN" : {
 		"{drive} driving, {atStations} at stations" : "行驶 {drive}，停站 {atStations}",
@@ -1129,9 +1118,8 @@
 		"No cargo is loaded at this stop." : "此站点不装载货物。",
 		"The fullest section of this line." : "此线路最满的区段。",
 		"Rate: the game's own line rate." : "运量：游戏计算的线路运量。",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "货物：线路车辆运输的种类，运力最大的在前。",
 		"Loads" : "装载",
-		"Loads: the cargo types this stop is set to load onto the line." : "装载：此站点设定装上线路的货物种类。",
+		"The cargo set to load in the line's stop settings." : "线路站点设置中设定装载的货物。",
 		"The fullest section is highlighted." : "最满的区段已高亮显示。",
 		"Cargo Details: {name}" : "货物详情：{name}",
 		"This station no longer exists." : "此车站已不存在。",
@@ -1161,7 +1149,7 @@
 		"Lines that carry cargo, mixed lines included." : "运输货物的线路，含混合线路。",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats：你所有客运和货运线路的统计。",
 		"Vehicles: the number of vehicles on the line." : "车辆：线路上的车辆数。",
-		"No cargo capacity" : "无货运运力"
+		"No stop is set to load cargo." : "没有站点设定装载货物。"
 	},
 	"zh_TW" : {
 		"{drive} driving, {atStations} at stations" : "行駛 {drive}，停站 {atStations}",
@@ -1226,9 +1214,8 @@
 		"No cargo is loaded at this stop." : "此站點不裝載貨物。",
 		"The fullest section of this line." : "此路線最滿的區段。",
 		"Rate: the game's own line rate." : "運量：遊戲計算的路線運量。",
-		"Cargo: the types the line's vehicles carry, largest capacity first." : "貨物：路線車輛運輸的種類，運能最大的在前。",
 		"Loads" : "裝載",
-		"Loads: the cargo types this stop is set to load onto the line." : "裝載：此站點設定裝上路線的貨物種類。",
+		"The cargo set to load in the line's stop settings." : "路線站點設定中設定裝載的貨物。",
 		"The fullest section is highlighted." : "最滿的區段已醒目標示。",
 		"Cargo Details: {name}" : "貨物詳情：{name}",
 		"This station no longer exists." : "此車站已不存在。",
@@ -1258,6 +1245,6 @@
 		"Lines that carry cargo, mixed lines included." : "運輸貨物的路線，含混合路線。",
 		"More Line Stats: statistics for all of your passenger and cargo lines." : "More Line Stats：你所有客運和貨運路線的統計。",
 		"Vehicles: the number of vehicles on the line." : "車輛：路線上的車輛數。",
-		"No cargo capacity" : "無貨運運能"
+		"No stop is set to load cargo." : "沒有站點設定裝載貨物。"
 	}
 }

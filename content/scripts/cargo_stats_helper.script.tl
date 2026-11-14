@@ -12,8 +12,8 @@
 -- (unhappy) count, and per stop the types configured to load. There is no
 -- "waiting at a stop for this line" and no leg demand for cargo. What waits
 -- is the stock of the industries and warehouses a stop reaches (2026-11-11):
--- read only when collect() is asked for it (Cargo Details), since the Lines
--- window's Cargo tab and the line-window card don't show it.
+-- read only when collect() is asked for it (withWaiting), as Cargo Details,
+-- the Lines window's Cargo tab and the line-window card do.
 --
 -- Index rules: Lua lists are 1-based; cargo-indexed lists use cargo id + 1.
 --
@@ -69,7 +69,6 @@ local function emptyStats(lineId : Engine.Entity, kind : string) : MlsCargoStats
 		stopTypeWaiting = {},
 		legVehicles = {},
 		legAtStation = {},
-		legVehicleNames = {},
 		vehicles = {},
 		carrier = "other",
 	}
@@ -226,7 +225,7 @@ local function waitingAtStop(stationGroup : Engine.Entity, ids : {integer}) : {i
 end
 
 -- Per stop, the Waiting figure and its per-type tooltip lines (-1 / "" =
--- no figure: the stop loads none of the line's types or reaches no stock).
+-- no figure: the stop loads nothing or reaches no stock).
 -- Also the line's total and each carried type's total (stats.waiting,
 -- types[].waiting), where a station group the line calls at twice adds its
 -- pile of a type once.
@@ -243,9 +242,14 @@ local function readStopWaiting(stats : MlsCargoStats, waitingCache : MlsWaitingC
 		stats.stopWaiting[i] = -1
 		stats.stopWaitingByType[i] = ""
 		stats.stopTypeWaiting[i] = {}
+		-- Every type the stop is set to load counts, whether or not the
+		-- vehicles have capacity for it at the moment (user, 2026-11-14): a
+		-- vehicle that carries steel one way and machines the other reports
+		-- capacity only for what it is set to now, and the figures must not
+		-- flip with it.
 		local ids : {integer} = {}
 		for _, cargoType in ipairs(stats.stopLoads[i] or {}) do
-			if cargoType.capacity > 0 then ids[#ids + 1] = cargoType.id end
+			ids[#ids + 1] = cargoType.id
 		end
 		if #ids > 0 and stationGroup ~= nil and api.engine.entityExists(stationGroup) then
 			local cacheKey = tostring(stationGroup) .. ":" .. table.concat(ids, ",")
@@ -261,17 +265,19 @@ local function readStopWaiting(stats : MlsCargoStats, waitingCache : MlsWaitingC
 				local parts : {string} = {}
 				for _, cargoType in ipairs(stats.stopLoads[i]) do
 					local count = counts[cargoType.id]
+					stats.stopTypeWaiting[i][cargoType.id] = count or 0
 					if count ~= nil and count > 0 then
 						total = total + count
 						parts[#parts + 1] = tostring(count) .. " " .. cargoType.name
 					end
-					local lineType = typeById[cargoType.id]
-					if lineType ~= nil then stats.stopTypeWaiting[i][cargoType.id] = count or 0 end
 					local pileKey = tostring(stationGroup) .. ":" .. tostring(cargoType.id)
-					if lineType ~= nil and not counted[pileKey] then
+					if not counted[pileKey] then
 						counted[pileKey] = true
-						lineType.waiting = math.max(lineType.waiting, 0) + (count or 0)
 						stats.waiting = math.max(stats.waiting, 0) + (count or 0)
+						local lineType = typeById[cargoType.id]
+						if lineType ~= nil then
+							lineType.waiting = math.max(lineType.waiting, 0) + (count or 0)
+						end
 					end
 				end
 				stats.stopWaiting[i] = total
@@ -373,7 +379,6 @@ local function collectUnsafe(lineId : Engine.Entity, withWaiting : boolean, cach
 	stats.vehicles = vehicleLegs.vehicles
 	stats.legVehicles = vehicleLegs.legVehicles
 	stats.legAtStation = vehicleLegs.legAtStation
-	stats.legVehicleNames = vehicleLegs.legVehicleNames
 	stats.carrier = vehicleLegs.carrier
 
 	-- Cargo on each leg: the loads of the vehicles on it, all types and per type.

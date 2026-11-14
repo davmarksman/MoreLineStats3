@@ -1,9 +1,11 @@
 -- Table pieces shared by the Passengers and Cargo tabs of the More Line
 -- Stats window (lines_list_gui and cargo_lines_gui): number cells, the
 -- colour and name cells, the sortable header row, the filter row, sorting,
--- filtering and the scrolling list. GUI thread; no recipes, no state, no
--- engine reads except in click handlers. Every node built here sits inside
--- the MlsLinesWindowContent recipe, so its stylesheet rules apply.
+-- filtering and the scrolling list. Cargo Details' Cargo table (cargo_gui)
+-- uses the header row and the sorting too. GUI thread; no recipes, no
+-- state, no engine reads except in click handlers. A node takes its
+-- stylesheet rules from the window recipe it sits in: all of them exist for
+-- MlsLinesWindowContent, the header's also for MlsCargoDetailsContent.
 -- Types in tealdef/mls_def.d.tl (MlsListTable, MlsColumn, MlsSortState,
 -- MlsFilterState, MlsKindFilter).
 
@@ -247,8 +249,7 @@ local function sortRows<R>(rows : {R}, columns : {MlsColumn<R>}, sort : MlsSortS
 	for _, candidate in ipairs(columns) do
 		if candidate.key == sort.key then col = candidate end
 	end
-	-- One key per row, built once: the name in lower case with every run of
-	-- digits padded with zeros to the same width, so text order is number order.
+	-- One key per row, built once per sort.
 	local nameKeys : {R : string} = {}
 	for _, row in ipairs(rows) do
 		nameKeys[row] = nameSortKey(nameOf(row))

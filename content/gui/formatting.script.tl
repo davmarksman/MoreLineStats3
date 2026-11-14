@@ -149,11 +149,25 @@ local function delayedTooltip() : string
 	return nGetText("Delayed Delivery", "Delayed Deliveries", 2)
 end
 
+-- The Cargo column of the Cargo tab (a line's stops together) and the Loads
+-- column of Cargo Details (one stop).
+local function loadsTooltip() : string
+	return _("The cargo set to load in the line's stop settings.")
+end
+
 -- A cargo line's Waiting figure (Cargo tab column, Cargo Details summary
 -- and Cargo table, line-window card).
 local function cargoWaitingTooltip() : string
 	return _("Waiting: the cargo this line loads, in the stocks of the industries and warehouses its stops reach.") .. "\n"
 		.. _("Shared with every line that reaches them.")
+end
+
+-- The stop lists' Distance and Speed columns (Line Details, Cargo Details).
+local function distanceTooltip() : string
+	return _("Distance to the next stop as the crow flies.")
+end
+local function speedTooltip() : string
+	return _("Speed: average speed to the next stop, crow-flies distance over driving time where known.")
 end
 
 -- A Waiting figure as text; -1 (no stop reaches a stock) is "-".
@@ -170,7 +184,10 @@ local exports : MlsFormatting = {
 	couldNotRead = couldNotRead,
 	loadCapacityTooltip = loadCapacityTooltip,
 	delayedTooltip = delayedTooltip,
+	loadsTooltip = loadsTooltip,
 	cargoWaitingTooltip = cargoWaitingTooltip,
+	distanceTooltip = distanceTooltip,
+	speedTooltip = speedTooltip,
 	waitingStr = waitingStr,
 	legTimeStr = legTimeStr,
 	legTooltip = legTooltip,

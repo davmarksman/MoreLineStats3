@@ -47,7 +47,6 @@ local function rowOf(stats : MlsLineStats, balance : integer) : MlsLineRow
 		lineId = stats.lineId,
 		name = stats.name,
 		kind = stats.carrier,
-		numVehicles = stats.numVehicles,
 		demand = demand,
 		demandPct = pct,
 		onBoard = stats.onBoard,
@@ -62,17 +61,14 @@ local function rowOf(stats : MlsLineStats, balance : integer) : MlsLineRow
 end
 
 local function collectAllUnsafe() : MlsLinesTable
-	local linesTable : MlsLinesTable = { rows = {}, cargoLines = 0, otherLines = 0 }
+	local linesTable : MlsLinesTable = { rows = {} }
 	local player = api.engine.util.getPlayer()
 	local period = lastYear()
 	for _, lineId in ipairs(api.engine.system.lineSystem.getLinesForPlayer(player)) do
 		local stats = lineStatsHelper.collect(lineId)
+		-- Cargo-only, empty and unreadable lines are left out.
 		if stats.kind == "passenger" then
 			linesTable.rows[#linesTable.rows + 1] = rowOf(stats, balanceOf(lineId, period))
-		elseif stats.kind == "cargo" then
-			linesTable.cargoLines = linesTable.cargoLines + 1
-		else
-			linesTable.otherLines = linesTable.otherLines + 1
 		end
 	end
 	return linesTable
@@ -83,10 +79,31 @@ local function collectAll() : MlsLinesTable
 	local ok, result = pcall(collectAllUnsafe)
 	if ok then return result as MlsLinesTable end
 	luaUtils.log("collectAll failed: " .. tostring(result))
-	return { rows = {}, cargoLines = 0, otherLines = 0, error = tostring(result) }
+	return { rows = {}, error = tostring(result) }
 end
 
--- One Cargo-tab row. The types are copied without their per-stop fields.
+-- The types the line's stops are set to load (the Loads cells of Cargo
+-- Details, each type once), largest capacity first, then by id. A type no
+-- vehicle carries has capacity 0 and comes last.
+local function loadedTypes(stats : MlsCargoStats) : {MlsCargoType}
+	local types : {MlsCargoType} = {}
+	local seen : {integer : boolean} = {}
+	for _, loads in ipairs(stats.stopLoads) do
+		for _, loaded in ipairs(loads) do
+			if not seen[loaded.id] then
+				seen[loaded.id] = true
+				types[#types + 1] = loaded
+			end
+		end
+	end
+	table.sort(types, function(typeA : MlsCargoType, typeB : MlsCargoType) : boolean
+		if typeA.capacity ~= typeB.capacity then return typeA.capacity > typeB.capacity end
+		return typeA.id < typeB.id
+	end)
+	return types
+end
+
+-- One Cargo-tab row.
 local function cargoRowOf(stats : MlsCargoStats, balance : integer) : MlsCargoLineRow
 	local pct : integer = 0
 	if stats.capacity > 0 then
@@ -117,7 +134,7 @@ local function cargoRowOf(stats : MlsCargoStats, balance : integer) : MlsCargoLi
 		rate = stats.rate,
 		waiting = stats.waiting,
 		waitingByStop = table.concat(parts, "\n"),
-		types = stats.types,
+		types = loadedTypes(stats),
 		journey = stats.journey,
 		frequency = stats.frequency,
 		balance = balance,
@@ -125,19 +142,16 @@ local function cargoRowOf(stats : MlsCargoStats, balance : integer) : MlsCargoLi
 end
 
 local function collectCargoUnsafe() : MlsCargoLinesTable
-	local linesTable : MlsCargoLinesTable = { rows = {}, passengerLines = 0, otherLines = 0 }
+	local linesTable : MlsCargoLinesTable = { rows = {} }
 	local player = api.engine.util.getPlayer()
 	local period = lastYear()
 	-- One cache for all lines: stations that several lines share are read once.
 	local waitingCache : MlsWaitingCache = { counts = {}, reaches = {} }
 	for _, lineId in ipairs(api.engine.system.lineSystem.getLinesForPlayer(player)) do
 		local stats = cargoStatsHelper.collect(lineId, true, waitingCache)
+		-- Lines without cargo capacity, empty and unreadable lines are left out.
 		if stats.kind == "cargo" then
 			linesTable.rows[#linesTable.rows + 1] = cargoRowOf(stats, balanceOf(lineId, period))
-		elseif stats.kind == "nocargo" then
-			linesTable.passengerLines = linesTable.passengerLines + 1
-		else
-			linesTable.otherLines = linesTable.otherLines + 1
 		end
 	end
 	return linesTable
@@ -148,7 +162,7 @@ local function collectCargo() : MlsCargoLinesTable
 	local ok, result = pcall(collectCargoUnsafe)
 	if ok then return result as MlsCargoLinesTable end
 	luaUtils.log("collectCargo failed: " .. tostring(result))
-	return { rows = {}, passengerLines = 0, otherLines = 0, error = tostring(result) }
+	return { rows = {}, error = tostring(result) }
 end
 
 local exports : MlsLinesHelper = {
